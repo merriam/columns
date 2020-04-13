@@ -16,9 +16,9 @@
           1                                * Setup.py
           1                                * Clean virtualenv install
           <+>                           * Development
-          2                               * Set up environment
+          2              .5                 * Set up environment
                                           * Run Tutorial
-          1                                 * Smoke test
+          1                .25                 * Smoke test
           1                                 * Follow the code
           1                                 * Emoticon extension
           <+>                               * Parse
