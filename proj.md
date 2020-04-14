@@ -19,7 +19,7 @@
           2              .5                 * Set up environment
                                           * Run Tutorial
           1                .25                 * Smoke test
-          1                                 * Follow the code
+          1                 .75+               * Follow the code
           1                                 * Emoticon extension
           <+>                               * Parse
           1                                 * Identify table, with word TABLE

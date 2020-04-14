@@ -1,31 +1,40 @@
 from markdown.extensions import Extension
-from markdown.inlinepatterns import  SimpleTagPattern
-
+from markdown.inlinepatterns import Pattern
+import xml.etree.ElementTree as etree
 
 # note, group 2 is expected to be the 'meat'
 DEL_RE = r'(--)(.*?)--'
 INS_RE = r'(__)(.*?)__'
 STRONG_RE = r'(\*\*)(.*?)\*\*'
 EMPH_RE = r'(\/\/)(.*?)\/\/'
+MULTI_RE = r'([*/_-]{2})(.*?)\2'
 
-class Columns(Extension):
-    def extendMarkdown(self, md, md_globals):
-        # create the del pattern
-        del_tag = SimpleTagPattern(DEL_RE, 'del')
-        # Insert del pattern into markdown parser
-        md.inlinePatterns.add('del', del_tag, '>not_strong')
 
-        ins_tag = SimpleTagPattern(INS_RE, 'ins')
-        md.inlinePatterns.add('ins', ins_tag, '>del')
+class MultiPattern(Pattern):
+    def handleMatch(self, m):
+        # note match is group (1), the text before the match, group (2) the punctuation, group(3) inside
+        if m.group(2) == '**':
+            tag = 'strong'  # bold
+        elif m.group(2) == '//':
+            tag = 'em'  # Italics
+        elif m.group(2) == '__':
+            tag = 'ins'  # underline
+        else:  # m.group(2) == '--'
+            tag = 'del'  # strike
 
-        strong_tag = SimpleTagPattern(STRONG_RE, 'strong')
-        md.inlinePatterns['strong'] = strong_tag  # override existing strong pattern
+        # Create the element
+        el = etree.Element(tag)
+        el.text = m.group(3)
+        return el
 
-        emph_tag = SimpleTagPattern(EMPH_RE, 'em')
-        md.inlinePatterns['emphasis'] = emph_tag
 
-        del md.inlinePatterns['em_strong']  # all the '*' emphasis-strong mix cases
-        del md.inlinePatterns['em_strong2'] # all the '_' emphasis-strong mix cases
-
+class MultiExtension(Extension):
+    def extendMarkdown(self, md):
+        # Delete the old patterns
+        del md.inlinePatterns['em_strong']
+        del md.inlinePatterns['em_strong2']
+        del md.inlinePatterns['not_strong']
+        multi = MultiPattern(MULTI_RE)
+        md.inlinePatterns['multi'] = multi
 
 
