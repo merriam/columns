@@ -26,8 +26,17 @@ This is *old italics*, **old bold** and ***old confusing*** text
 
 def run_def_list():
     txt= """
+    
+This is a [reference][here] thing
+[here]:  https://thing 'this thing'    
+    
+This is a [two line refernce][there] thing
+[there]:  https://thing
+    "optional title"
+    
 We should make *DEFLISTS*
 It would be fun.
+This has a plus <+> and avg <avg>
 
 This is the line before
 
@@ -70,6 +79,7 @@ See
 
 def run_columns():
     txt = """
+    
 Notice the trend here?
 
 California   39.5   40
