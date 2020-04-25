@@ -1,3 +1,6 @@
+import os
+import time
+
 import markdown
 from markdown.extensions import Extension
 from markdown.inlinepatterns import InlineProcessor
@@ -5,10 +8,10 @@ from markdown.blockprocessors import BlockProcessor
 from markdown.inlinepatterns import SimpleTagInlineProcessor
 import xml.etree.ElementTree as etree
 import re
+import webbrowser
+from tempfile import NamedTemporaryFile
 
-
-def run_tutorial():
-    txt = """
+tutorial_text = """
 &!&!this&!&!
         
 This is __ins__ text
@@ -23,16 +26,8 @@ This is *old italics*, **old bold** and ***old confusing*** text
     * five deep
 
         """
-    print(markdown.markdown(txt, extensions=['tutorial']))
-    print(markdown.markdown(txt,
-                            extensions=['tutorial'],
-                            extension_configs={
-                                'tutorial': {'ins_del': True}
-                            }))
 
-
-def run_def_list():
-    txt = """
+deflist_text = """
     
 This is a [reference][here] thing
 [here]:  https://thing 'this thing'    
@@ -82,28 +77,129 @@ Yes that is
 
 See
 """
-    print(markdown.markdown(txt, extensions=['def_list']))
-
-
-def run_columns():
-    txt = """
+col1_text = """
     
 Notice the trend here?
 
+
+
 California   39.5   40
+0123456789   3456   0123
 Texas *X*    29.0   26.2
 
+Antartica     0.0    -
+
+
+Not table
 
 California has a *much* bigger number than Texas both times!
 
 ** bold works **
 Nothing changes
 """
+del_text = """
+First line of the block.
+This is --strike one--.
+This is --strike two--.
+End of the block.
+"""
+box_text = """
+You could create zombies by mixing lime and coconut.
+
+!!!!!
+Never do that!
+
+Everyone might **die**!
+!!!!!
+
+Let's not.
+"""
+bad_nesting_text = """
+<div class="row" markdown="1">
+<div class="col-md-6" markdown="1">
+**SomeText**
+</div>
+
+<div class="col-md-6" markdown="1">
+
+**bold text**  
+
+<small>(<i class="fa fa-arrow-left"></i> small)</small>
+
+<div class="barchart" markdown="1">
+* item1
+* item2
+</div>
+
+more text
+
+</div>
+</div>
+"""
+good_nesting_text = """
+<div class="row" markdown="1">
+    <div class="col-md-6" markdown="1">
+        **SomeText**
+    </div>
+    <div class="col-md-6" markdown="1">
+        **bold text**  
+        <small>(<i class="fa fa-arrow-left"></i> small)</small>
+        <div class="barchart" markdown="1">
+            * item1
+            * item2
+        </div>
+        more text
+    </div>
+</div>
+"""
+
+
+def run_tutorial():
+    txt = tutorial_text
+    print(markdown.markdown(txt, extensions=['tutorial']))
     print(markdown.markdown(txt,
-                            extensions=['columns'],
+                            extensions=['tutorial'],
                             extension_configs={
-                                'columns': {'verbose': True}
+                                'tutorial': {'ins_del': True}
                             }))
+
+
+def run_def_list():
+    txt = deflist_text
+    print(markdown.markdown(txt, extensions=['def_list']))
+
+
+def show_page(titles, inps, outs):
+    o = ''
+    for title, inp, out in zip(titles, inps, outs):
+        o += f'''
+<link rel="stylesheet" href="file:///Users/charlesmerriam/p/columns/blue.css" type="text/css">
+<h1>{title}</h1>\n
+        <h3>Input:</h3>\n
+        <pre>{inp}</pre><hr>\n
+        <h3>Output:</h3>\n
+        <h4>Source:</h4>\n
+        <code><pre>{out.replace('<', '&lt;')}</pre></code><hr>\n
+        <h4>Render:</h4>\n
+        {out}<hr><hr>\n'''
+    f = NamedTemporaryFile(mode='w', suffix='.html', delete=False)
+    f.write(o)
+    f.close()
+    webbrowser.open('file://' + f.name)
+    time.sleep(5)
+    os.unlink(f.name)
+
+
+def run_columns():
+    texts = [col1_text]
+    outs = []
+    for text in texts:
+        outs.append(markdown.markdown(text,
+                                      extensions=['columns'],
+                                      extension_configs={
+                                          'columns': {'verbose': True}
+                                      }))
+    show_page("Basic Columns", texts, outs)
 
 
 def test_inline_del_short():
@@ -113,20 +209,11 @@ def test_inline_del_short():
                 SimpleTagInlineProcessor(r'()--(.*?)--', 'del'),
                 'del', 175)
 
-    txt = """
-Not in the block
-
-First line of the block.
-This is --strike one--.
-This is --strike two--.
-End of the block.
-"""
+    txt = del_text
     print(markdown.markdown(txt, extensions=[DelExtension()]))
 
-def test_inline_del_long():
-    """
-    """
 
+def test_inline_del_long():
     DEL_PATTERN = r'--(.*?)--'  # like --del--
 
     class DelInlineProcessor(InlineProcessor):
@@ -139,14 +226,7 @@ def test_inline_del_long():
         def extendMarkdown(self, md):
             md.inlinePatterns.register(DelInlineProcessor(DEL_PATTERN, md), 'del', 175)
 
-    txt = """
-Not in the block
-
-First line of the block.
-This is --strike one--.
-This is --strike two--.
-End of the block.
-"""
+    txt = del_text
     print(markdown.markdown(txt,
                             extensions=[DelExtension()],
                             extension_configs={
@@ -154,9 +234,9 @@ End of the block.
                             }))
 
 
-def test_block_processor():
+def test_box_processor():
     class BoxBlockProcessor(BlockProcessor):
-        RE_FENCE_START = r'^ *!{3,} *\n' # start line, e.g., `   !!!! `
+        RE_FENCE_START = r'^ *!{3,} *\n'  # start line, e.g., `   !!!! `
         RE_FENCE_END = r'\n *!{3,}\s*$'  # last non-blank line, e.g, '!!!\n  \n\n'
 
         def test(self, parent, block):
@@ -187,74 +267,14 @@ def test_block_processor():
         def extendMarkdown(self, md):
             md.parser.blockprocessors.register(BoxBlockProcessor(md.parser), 'box', 175)
 
-    text = """
-You could create zombies by mixing lime and coconut.
-
-!!!!!
-Never do that!
-
-Everyone might **die**!
-!!!!!
-
-Let's not.
-"""
+    text = box_text
     print(markdown.markdown(text,
                             extensions=[BoxExtension()]))
 
+
 def test_break():
-    bad_text = """
-<div class="row" markdown="1">
-<div class="col-md-6" markdown="1">
-**SomeText**
-</div>
-
-<div class="col-md-6" markdown="1">
-
-**bold text**  
-
-<small>(<i class="fa fa-arrow-left"></i> small)</small>
-
-<div class="barchart" markdown="1">
-* item1
-* item2
-</div>
-
-more text
-
-</div>
-</div>
-"""
-
-    good_text = """
-<div class="row" markdown="1">
-    <div class="col-md-6" markdown="1">
-        **SomeText**
-    </div>
-    <div class="col-md-6" markdown="1">
-        **bold text**  
-        <small>(<i class="fa fa-arrow-left"></i> small)</small>
-        <div class="barchart" markdown="1">
-            * item1
-            * item2
-        </div>
-        more text
-    </div>
-</div>
-"""
-
-    odd_texts = [
-        good_text,
-        bad_text,
-        "<!-->", # not a comment
-        "<b>Hello"  # unclosed
-        "<p><p>Hello everyone\n\n<b>See</b>"
-        ]
-    text = "<!-"
-
-    print(markdown.markdown(bad_text, extensions=['extra']))
+    print(markdown.markdown(bad_nesting_text, extensions=['extra']))
 
 
 if __name__ == '__main__':
-    test_break()
-    # test_block_processor()
-    # run_columns()
+    run_columns()

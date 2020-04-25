@@ -1,9 +1,9 @@
+import re
+import xml.etree.ElementTree as etree
 from sys import stderr
 
+from markdown.blockprocessors import BlockProcessor
 from markdown.extensions import Extension
-from markdown.postprocessors import Postprocessor
-from markdown.preprocessors import Preprocessor
-import re
 
 
 def tag(name):
@@ -14,26 +14,34 @@ class ColumnsException(Exception):
     pass
 
 
-class ColumnsPreprocessor(Preprocessor):
-    def __init__(self, verbose, code_indent):
-        self.verbose = verbose
+class ColumnsBlockProcessor(BlockProcessor):
+    def __init__(self, parser, verbose, code_indent):
+        self.is_verbose = verbose
         self.code_indent = code_indent
-        super().__init__()
+        super().__init__(parser)
         self.lines = []
 
-    def fail(self, reason):
-        msg = f'Columns: {reason}'
-        if self.verbose:
+    def verbose(self, reason):
+        if self.is_verbose:
+            msg = f'Columns: {reason}'
             print(msg, file=stderr)
-        raise ColumnsException(msg)
+
+    def fail(self, reason):
+        self.verbose(reason)
+        raise ColumnsException(reason)
+
+    def test(self, parent, block):
+        # API entry point, just preliminary test
+        return bool(re.search(r'\S {2,}\S', block))
 
     @staticmethod
     def get_columns(spaces):
-        """ look at array of boolean spaces and return list a (start, end) of each
-            actual text column, which is two or more spaces from next actual text column.
+        """ look at array of boolean spaces and return list a (start, end+1) of each
+            actual column of False (non-blank), which has two or more spaces
+            from next actual text column.
 
-            for .=True, x=False, "x..xx.x." gives (0,0), (3,6)
-            returns list of (start, end) tuples of text columns
+            for .=True, x=False, "x..xx.x." gives (0,1), (3,7)
+            returns list of tuples of text columns
         """
         starts = [i for (i, sp) in enumerate(spaces)
                   if sp and (i == 0 or not spaces[i - 1])]
@@ -43,51 +51,75 @@ class ColumnsPreprocessor(Preprocessor):
                       if end - start > 0]
         text_cols = []
         if space_cols and space_cols[0][0] > 0:
-            text_cols.append((0, space_cols[0][0] - 1))  # text starting at zero
+            text_cols.append((0, space_cols[0][0]))  # text starting at zero
         for i in range(1, len(space_cols)):
-            text_cols.append((space_cols[i - 1][1] + 1, space_cols[i][0] - 1))
+            text_cols.append((space_cols[i - 1][1] + 1, space_cols[i][0]))
             # (one after last column, to one before next column), 0 width OK
         if space_cols and space_cols[-1][1] < len(spaces):
-            text_cols.append((space_cols[-1][1] + 1, len(spaces) - 1))
+            text_cols.append((space_cols[-1][1] + 1, len(spaces)))
             # (one after final column, to end of line)
         return text_cols
 
-    def find_table_extent(self, start_line_num, lines):
-        """ Find last line of table and column numbers for text in that table, else throw ColumnsException.
+    def find_table_extent(self, blocks):
+        """ Find number of blocks used in table, else throw ColumnsException.
 
-            Table ends with two blank lines or the end of the file.
-
-            returns (last_line, List[Tuple[start_col, end_col]])
+            A table extends through one or more blocks where it has columns of two or more
+            spaces running vertically through the text.  We check each block
+            until one fails, and then return the good matches.
+            returns number of blocks used, lines in the table, and list of (start, end) column indices
         """
         spaces = []  # List[Bool], true if table has all spaces in this column
-        line_num = start_line_num
-        was_last_blank = False
-        while line_num < len(lines):
-            line = lines[line_num].rstrip()
-            if line:
-                was_last_blank = False
-                spaces = [ch == ' ' and (i > len(spaces) or spaces[i])
-                          for (i, ch) in enumerate(line)]
+        good_lines = []  # lines known to be part of a table
+        good_blocks = 0  # block used to make good_lines
+        cols = []
+        for current_block, block in enumerate(blocks):
+            if current_block == 0:
+                lines = []
+            elif block[0] == '\n':
+                break  # double newline, end the table
             else:
-                if was_last_blank:
-                    break  # two lines, return whatever we found so far
-                was_last_blank = True
-            line_num += 1
-        if line_num >= len(lines):
-            line_num = len(lines) - 1  # ends on last line
-        cols = self.get_columns(spaces)
-        if len(cols) < 2:
-            self.fail(f'Need at least two columns, lines:{start_line_num}-{line_num}')
-        if line_num - start_line_num < 2:
-            self.fail(f'table too short, lines {start_line_num}-{line_num}')
-        if cols[0][0] >= self.code_indent:
-            self.fail(f'table starts too far in and is a code block, lines {start_line_num}-{line_num}')
-        return line_num, cols
+                lines = ['']  # separator for blank table line
+            lines += block.strip('\n').splitlines()
+            spaces = self.update_spaces_in_lines(lines, spaces)
+            cols = self.get_columns(spaces)
+            for l in lines:
+                print('|' + '|'.join([l[slice(*c)] for c in cols]) + "|")
 
-    def transform_table(self, line_num, lines):
+            if cols[0][0] >= self.code_indent:
+                self.verbose(f'block #{current_block}.  Table starts too far in and is a code block')
+                break
+            good_lines.extend(lines)
+            good_blocks += 1
+
+        if len(cols) < 2:
+            self.verbose(f'Need at least two columns')
+            return 0, [], []
+        elif len(good_lines) < 2:
+            self.verbose(f'Table too short')
+            return 0, [], []
+        else:
+            return good_blocks, good_lines, cols
+
+    def update_spaces_in_lines(self, lines, spaces):
+        for line in lines:
+            line_spaces = [ch == ' ' for ch in line]
+            new_spaces = []
+            for i in range(max(len(spaces), len(line_spaces))):
+                if i < len(spaces) and i < len(line_spaces):
+                    new_spaces.append(line_spaces[i] and spaces[i])
+                elif i < len(spaces):
+                    new_spaces.append(spaces[i])
+                else:
+                    new_spaces.append(line_spaces[i])
+            spaces = new_spaces
+        print('\n'.join(lines))
+        print(''.join([' ' if space else 'x' for space in spaces]))
+        return spaces
+
+    def transform_table(self, parent, blocks):
         """
-        Tries to transform a table starting at line_num in lines.
-        :return: (ending_line_of_table, transformed_table_lines) if table started here, else (None, [])
+        Transform table from blocks, updating parent.  Returns
+        number of blocks used, which may be 0 if not a table.
         """
 
         class TableLine:
@@ -95,6 +127,9 @@ class ColumnsPreprocessor(Preprocessor):
                 self.text = text
                 self.kind = 'tbd'
                 self.col_text = [text[start:end + 1] for (start, end) in cols_]
+
+            def __str__(self):
+                return f"TableLine, kind={self.kind}, col_text={'|'.join(self.col_text)}"
 
             def is_all_decorated(self):
                 return all([re.match(r'^\s*([*_]).*\1\s*$', col_text) for col_text in self.col_text])
@@ -124,88 +159,102 @@ class ColumnsPreprocessor(Preprocessor):
                 del table[-2]
 
         def mark_body():
-            for line in table:
-                if line.kind == 'tbd':
-                    if line.has_calculated():
-                        line.kind = 'calc'
-                    if line.text:
-                        line.kind = 'data'
+            for row in table:
+                if row.kind == 'tbd':
+                    if row.has_calculated():
+                        row.kind = 'subt'
+                    if row.text:
+                        row.kind = 'data'
                     else:
-                        line.kind = 'sep'  # might be bottom of table, but will delete it soon
+                        row.kind = 'sep'  # might be bottom of table, but will delete it soon
 
         def fix_calculated():
-            # just totals for now.
-            for line in table:
-                for col_text in line.col_text:
-                    if '<+>' in col_text:
-                        pass
+            # fix calculated <+>, <%>, <avg>.
+            pass
 
-        def emit_lines():
-            out = [tag('start_table')]
-            for line in table:
-                if line.kind in ('header', 'data', 'footer', 'calc'):
-                    out.append(tag(f'start_{line.kind}'))
-                    the_tag = tag(f'col_{line.kind}')
-                    for col_text in line.col_text:
-                        out.append(f"{the_tag} {col_text}")
-                    out.append(tag(f'end_{line.kind}'))
-                elif line.kind == 'sep':
-                    out.append(tag('sep'))
-                else:
-                    self.fail(f'Internal error, odd kind: {line.kind} in {line.text}')
-            return out
-
-        after_space = line_num == 0 or not lines[line_num - 1].strip()
-        has_spaces = '  ' in lines[line_num].rstrip()
-        if after_space and has_spaces:  # skip common not-a-table case
-            try:
-                (ending_line, cols) = self.find_table_extent(line_num, lines)
-                if ending_line > len(lines):
-                    raise Exception(f"Da fuq?  line {ending_line}")
-                table = [TableLine(line, cols) for line in lines[line_num: ending_line]]
-                mark_headers()
-                mark_body()
-                mark_footers()
-                fix_calculated()
-                new_lines = emit_lines()
-                return ending_line, new_lines
-            except ColumnsException:
-                pass  # not a table, just fall through
-        return None, []  # bail on most common case
-
-    def run(self, lines):
-        """ markdown extension API entry.  Gets big string, returns transformed big string """
-        out = []
-        line_num = 0
-        while line_num < len(lines):
-            (ending_line, table_lines) = self.transform_table(line_num, lines)
-            if ending_line is not None:
-                out.extend(table_lines)
-                line_num = ending_line + 1
+        def style(row_kind, col_num):
+            # row emphasis
+            if row_kind == 'subt':
+                s = 'font-style: italic;'
+            elif row_kind == 'footer':
+                s = 'font-weight: bold;'
             else:
-                out.append(lines[line_num])
-                line_num += 1
-        return '\n\n'.join(out).splitlines()
+                s = ''
+            # col formatting
+            numberish = r'^\s*(?:([+-]?\s*\d+\.?\d*)|n\/a|N\/A|-+)?\s*$'  # like, '5', '- 23.2', ' ', '-', 'n/a'
+            column = [(row.col_text[col_num] if col_num < len(row.col_text) else '')
+                      for row in table]
+            if all([re.match(numberish, col) for col in column]):  # numberish
+                s += 'text-align: right;'
+                # line up decimal points?  It's a pain.
+            return {'style': s} if s else {}
+
+        def update_parent_with_table():
+            t_table = etree.SubElement(parent, 'table', {'class': 'paleBlueRows'})
+            for row in table:
+                if row.kind == 'sep':
+                    t_tr = etree.SubElement(t_table, 'tr', {'style': 'border-bottom:1px solid black'})
+                    etree.SubElement(t_tr, 'td', {'colspan': "100%"})
+                else:
+                    if row.kind == 'header':
+                        t_row = etree.SubElement(etree.SubElement(t_table, 'thead'), 'tr')
+                        tag_ = 'th'
+                    elif row.kind == 'footer':
+                        t_row = etree.SubElement(etree.SubElement(t_table, 'tfoot'), 'tr')
+                        tag_ = 'td'
+                    elif row.kind == 'data':
+                        t_row = t_row = etree.SubElement(t_table, 'tr')
+                        tag_ = 'td'
+                    else:
+                        self.fail(f'Internal error, odd kind: {row.kind} in {row.text}')
+
+                    for col, text in enumerate(row.col_text):
+                        etree.SubElement(t_row, tag_, style(row.kind, col)).text = text
+
+        # transform table
+        try:
+            (num_blocks, lines, cols) = self.find_table_extent(blocks)
+            if num_blocks > 0:
+                table = [TableLine(line, cols) for line in lines]
+                mark_headers()
+                mark_footers()
+                mark_body()
+                fix_calculated()
+                update_parent_with_table()
+            return num_blocks
+        except ColumnsException:
+            return 0  # bail on any problem
+
+    def run(self, parent, blocks):
+        """ markdown extension API entry.
+            Blocks are each a multi-line, Unicode string where
+            all blank lines have been stripped (no '\n  \n'),
+            and there are no double blank lines (no '\n\n').  """
+        blocks_used = self.transform_table(parent, blocks)
+        if blocks_used == 0:
+            return False  # not a table
+        else:
+            for i in range(blocks_used):
+                blocks.pop(0)
 
 
-
-class ColumnsPostprocessor(Postprocessor):
-    def __init__(self, verbose, style):
-        self.verbose = verbose
-        self.style = style
-        super().__init__()
-
-    def run(self, text):
-        replacements = {
-            'start_table': '<table>',
-            'end_table': '</table>',
-            'start_data': '<tr>',
-            'end_data': '</tr>',
-            r'col_data ([^\n]*)': r'<td>\1</td>'
-        }
-        for pattern, rep in replacements.items():
-            text = re.sub(tag(pattern), rep, text)
-        return text
+# class ColumnsPostprocessor(Postprocessor):
+#     def __init__(self, verbose, style):
+#         self.verbose = verbose
+#         self.style = style
+#         super().__init__()
+#
+#     def run(self, text):
+#         replacements = {
+#             'start_table': '<table>',
+#             'end_table': '</table>',
+#             'start_data': '<tr>',
+#             'end_data': '</tr>',
+#             r'col_data ([^\n]*)': r'<td>\1</td>'
+#         }
+#         for pattern, rep in replacements.items():
+#             text = re.sub(tag(pattern), rep, text)
+#         return text
 
 
 class ColumnsExtension(Extension):
@@ -216,11 +265,9 @@ class ColumnsExtension(Extension):
         super().__init__(**kwargs)
 
     def extendMarkdown(self, md):
-        md.preprocessors.register(
-            ColumnsPreprocessor(self.getConfig('verbose'), code_indent=md.tab_length),
-            'columns', 25)  # run after normalizing text but before html
-        md.postprocessors.register(
-            ColumnsPostprocessor(self.getConfig('verbose'), self.getConfig('style')), 'columns', 35)  # first
+        md.parser.blockprocessors.register(
+            ColumnsBlockProcessor(md.parser, self.getConfig('verbose'), code_indent=md.tab_length),
+            'columns', 125)  # run before code block escapes
 
 
 def makeExtension(**kwargs):
