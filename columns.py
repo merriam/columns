@@ -72,24 +72,29 @@ class ColumnsBlockProcessor(BlockProcessor):
         good_lines = []  # lines known to be part of a table
         good_blocks = 0  # block used to make good_lines
         cols = []
+        print(f"On block {blocks[0][0:10]}")
         for current_block, block in enumerate(blocks):
             if current_block == 0:
                 lines = []
-            elif block[0] == '\n':
-                break  # double newline, end the table
+            elif not block or block[0]  == '\n':
+                break  # double newline or empty block, end the table
             else:
                 lines = ['']  # separator for blank table line
             lines += block.strip('\n').splitlines()
             spaces = self.update_spaces_in_lines(lines, spaces)
-            cols = self.get_columns(spaces)
-            for l in lines:
-                print('|' + '|'.join([l[slice(*c)] for c in cols]) + "|")
-
-            if cols[0][0] >= self.code_indent:
+            new_cols = self.get_columns(spaces)
+            if len(new_cols) < 2:
+                break  # not a table, if this block is included.
+            if new_cols[0][0] >= self.code_indent:
                 self.verbose(f'block #{current_block}.  Table starts too far in and is a code block')
                 break
+            cols = new_cols
             good_lines.extend(lines)
             good_blocks += 1
+            print(f"blocks processed: {good_blocks}; new data fields:")
+            for l in lines:
+                print('|' + '|'.join([l[slice(*c)] for c in new_cols]) + "|")
+
 
         if len(cols) < 2:
             self.verbose(f'Need at least two columns')
@@ -163,14 +168,22 @@ class ColumnsBlockProcessor(BlockProcessor):
                 if row.kind == 'tbd':
                     if row.has_calculated():
                         row.kind = 'subt'
-                    if row.text:
+                    elif row.text:
                         row.kind = 'data'
                     else:
                         row.kind = 'sep'  # might be bottom of table, but will delete it soon
 
         def fix_calculated():
-            # fix calculated <+>, <%>, <avg>.
-            pass
+            # fix calculated <#> <+>, <%>, <avg>.
+            for row_num, row in enumerate(table):
+                if row.kind == 'footer':
+                    for c, text in enumerate(row.col_text):
+                        if '<#>' in text:
+                            column = [(row_.col_text[c] if c < len(row_.col_text) else '')
+                                      for row_ in table[:row_num]]  # columns above
+                            blank_ish = '^(?:[ -]*|n\/a|N\/A)$'
+                            count = sum([1 for t in column if not re.match(blank_ish, t)])
+                            row.col_text[c] = text.replace('<#>', str(count))
 
         def style(row_kind, col_num):
             # row emphasis

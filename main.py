@@ -90,12 +90,84 @@ Texas *X*    29.0   26.2
 Antartica     0.0    -
 
 
-Not table
+Not table,    because its two lines break from above.  So it is short.
 
 California has a *much* bigger number than Texas both times!
 
-** bold works **
-Nothing changes
+"""
+col2_text = """
+I have headers and footers using punctuation
+
+State            Population
+                 ---------------------
+California         39.5
+Texas              29.0
+                  ++++
+Total (million)    68.5 
+"""
+col3_text = """
+  I have headers and footers with punctuation
+  
+  *State*        *Population*
+  California     39.5
+  Texas          29.0
+  _Total_        _68.5 (million)_"""
+
+col4_text = """
+I am not a table because I'm indented too far.
+
+      *State*        *Population*
+      California     39.5
+      Texas          29.0
+      _Total_        _68.5 (million)_"""
+
+col5_text = """
+I have computed fields in my footer
+
+California        39.5
+Texas             29.0
+-------------
+_<#> States_      _<+> (average <avg>)_   <%>
+"""
+col6_text = """
+I have blank lines
+
+Washington    12.5
+Oregon         2.5
+California    39.5
+
+Texas         29.0
+Arkansas      13.4"""
+col7_text = """
+I have lists, subtotals, and mulitple percentages
+
+California          <+>                <%>
+* Born US Citizen  28883435
+* Foreign Born     10628788
+Texas               <+>                <%>
+* Born US Citizen  24066581
+* Foreign Born     4929300
+_Total_            _<+> (avg <avg>)_              <%>
+"""
+col8_text = """
+I have crazy alignment.
+
+                                Total
+                              --
+California                     39.5
+        Texas                     29.0
+              Rhode Island  1.0
+"""
+col9_text="""
+Dashes are tricky
+
+               2nd column title indented like code block
+-
+Dash above is  title line separator
+-              dash is 'no-value' for counting
+Dash below is  footer line separator
+-
+2 items (<#>)  <+>=0 from no numbers
 """
 del_text = """
 First line of the block.
@@ -191,15 +263,18 @@ def show_page(titles, inps, outs):
 
 
 def run_columns():
-    texts = [col1_text]
+    texts = [col1_text, col2_text, col3_text, col4_text, col5_text, col6_text, col7_text, col8_text, col9_text]
+    texts = [col5_text, col6_text, col7_text, col8_text, col9_text]
     outs = []
+    titles = []
     for text in texts:
+        titles.append(text.strip().splitlines()[0])
         outs.append(markdown.markdown(text,
                                       extensions=['columns'],
                                       extension_configs={
                                           'columns': {'verbose': True}
                                       }))
-    show_page("Basic Columns", texts, outs)
+    show_page(titles, texts, outs)
 
 
 def test_inline_del_short():
