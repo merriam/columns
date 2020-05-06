@@ -51,7 +51,7 @@ def show_page(titles, inps, outs):
     os.unlink(f.name)
 
 
-def run_columns():
+def play_columns():
     texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9]
     texts = [sample7, sample8, sample9]
     outs = []
@@ -66,7 +66,7 @@ def run_columns():
     show_page(titles, texts, outs)
 
 
-def test_inline_del_short():
+def play_inline_del_short():
     class DelExtension(Extension):
         def extendMarkdown(self, md):
             md.inlinePatterns.register(
@@ -77,7 +77,7 @@ def test_inline_del_short():
     print(markdown.markdown(txt, extensions=[DelExtension()]))
 
 
-def test_inline_del_long():
+def play_inline_del_long():
     DEL_PATTERN = r'--(.*?)--'  # like --del--
 
     class DelInlineProcessor(InlineProcessor):
@@ -98,7 +98,7 @@ def test_inline_del_long():
                             }))
 
 
-def test_box_processor():
+def play_box_processor():
     class BoxBlockProcessor(BlockProcessor):
         RE_FENCE_START = r'^ *!{3,} *\n'  # start line, e.g., `   !!!! `
         RE_FENCE_END = r'\n *!{3,}\s*$'  # last non-blank line, e.g, '!!!\n  \n\n'
@@ -136,9 +136,9 @@ def test_box_processor():
                             extensions=[BoxExtension()]))
 
 
-def test_break():
+def play_break():
     print(markdown.markdown(nesting_bad, extensions=['extra']))
 
 
 if __name__ == '__main__':
-    run_columns()
+    play_columns()
