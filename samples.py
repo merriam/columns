@@ -142,7 +142,7 @@ California                     39.5
         Texas                     29.0
               Rhode Island  1.0
 """
-sample9= """
+sample9 = """
 Dashes are tricky
 
                2nd column title indented like code block

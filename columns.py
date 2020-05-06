@@ -85,7 +85,7 @@ class ColumnsBlockProcessor(BlockProcessor):
 
     def test(self, parent, block):
         # API entry point, just preliminary test to skip some blocks
-        return bool(re.search(r'\S {2,}\S', block))   # 2 or more spaces
+        return bool(re.search(r'\S {2,}\S', block))  # 2 or more spaces
 
     @staticmethod
     def get_columns(spaces):
@@ -188,7 +188,6 @@ class ColumnsBlockProcessor(BlockProcessor):
         print(''.join(['-' if space else 'A' for space in spaces]))
         return spaces
 
-
     def set_table_kinds(self, table):
         if table[0].is_all_decorated():
             table[0].kind = 'header'
@@ -219,7 +218,6 @@ class ColumnsBlockProcessor(BlockProcessor):
         number of blocks used, which may be 0 if not a table.
         """
 
-
         def mark_body():
             for row_num, row in enumerate(table):
                 for col_num, text in enumerate(row.col_text):
@@ -231,12 +229,12 @@ class ColumnsBlockProcessor(BlockProcessor):
                         mark = m.group(2) if not m.group(2)[0].isdigit() else '1.'
 
                         # Walk up table trying to find a sibling.
-                        for walk_row_num in range(row_num -1, -1, -1):
+                        for walk_row_num in range(row_num - 1, -1, -1):
                             walk_row = table[walk_row_num]
                             walk_text = walk_row.col_text[col_num]
                             if not walk_text:
                                 continue  # skip blank line in table without breaking count
-                            new_m =  re.match(r'^( )*((?:[*+-]|\d\.)?)', walk_text)  # always match, but may be empty
+                            new_m = re.match(r'^( )*((?:[*+-]|\d\.)?)', walk_text)  # always match, but may be empty
                             if new_m:
                                 new_spaces = len(new_m.group(1))
                                 new_mark = new_m.group(2)
@@ -257,7 +255,6 @@ class ColumnsBlockProcessor(BlockProcessor):
                             row.depth = 1
                         # walk up, finding a sibling or parent
                         # walk up, until same or lower depth
-
 
         def fix_calculated():
             def get_cumputing_row_indices(r_num, c_num):
@@ -385,8 +382,6 @@ class ColumnsBlockProcessor(BlockProcessor):
                 blocks.pop(0)
 
 
-
-
 class ColumnsExtension(Extension):
     def __init__(self, **kwargs):
         self.config = {
@@ -417,6 +412,7 @@ def test_column_block_processor():
             tab_length = 4
 
         md = mock1()
+
     def bools(st):
         return [(True if ch in 'tTx' else False) for ch in st]
 
@@ -432,42 +428,41 @@ def test_column_block_processor():
 
     assert bools('tft') == [True, False, True]
     assert c.get_columns(bools('ttttttt')) == []
-    assert c.get_columns(bools('ttttfttt')) == [(4,5)]
-    assert c.get_columns(bools('t..')) == [(1,3)]
-    assert c.get_columns(bools('t..t')) == [(1,3)]
-    assert c.get_columns(bools('.tt..t.t'))== [(0,1), (3, 7)]
-    assert c.get_columns(bools('t..tt.t.'))== [(1,3), (5,8)]
+    assert c.get_columns(bools('ttttfttt')) == [(4, 5)]
+    assert c.get_columns(bools('t..')) == [(1, 3)]
+    assert c.get_columns(bools('t..t')) == [(1, 3)]
+    assert c.get_columns(bools('.tt..t.t')) == [(0, 1), (3, 7)]
+    assert c.get_columns(bools('t..tt.t.')) == [(1, 3), (5, 8)]
 
     assert c.update_spaces_in_lines([], []) == []
     assert c.update_spaces_in_lines(['A   C D', 'A B   D'], []) == bools(' x x x ')
-    assert c.update_spaces_in_lines(['  '],[False]) == [False, True]
+    assert c.update_spaces_in_lines(['  '], [False]) == [False, True]
 
     assert c.find_table_extent([]) == (0, [], [])
     assert c.find_table_extent(['     ']) == (0, [], [])
     assert c.find_table_extent(['a  b']) == (0, [], [])
     assert c.find_table_extent(['             a  b\n             a  b']) == (0, [], [])
-    b1 = ['a  b\n1  2', '3  4\n5  6','Not in Table']
+    b1 = ['a  b\n1  2', '3  4\n5  6', 'Not in Table']
     blocks_used, lines_in_table, cols = cq.find_table_extent(b1)
-    assert blocks_used == 2 and lines_in_table == ['a b', '1 2', '3 4', '5 6'] and cols == [(0,1), (3,4)]
+    assert blocks_used == 2 and lines_in_table == ['a b', '1 2', '3 4', '5 6'] and cols == [(0, 1), (3, 4)]
 
 
 def test_table_line():
     t = TableLine('', [])
     assert not t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('    ', [(0,1),(3,4)])
+    t = TableLine('    ', [(0, 1), (3, 4)])
     assert not t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('a  b', [(0,1),(3,4)])
+    t = TableLine('a  b', [(0, 1), (3, 4)])
     assert t.text == 'a  b' and t.col_text[0] == 'a' and t.col_text[1] == 'b'
     assert not t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('One   Space <#> Two', [(0,3), (5, 21), (30, 35)])
+    t = TableLine('One   Space <#> Two', [(0, 3), (5, 21), (30, 35)])
     assert t.col_text[0] == 'One' and t.col_text[1] == ' Space <#> Two' and t.col_text[2] == ''
     assert not t.is_all_decorated() and not t.is_all_separator() and t.has_calculated()
-    t = TableLine('_One_    *Space Two*', [(0,7), (9, 20), (30, 35)])
-    assert  t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('-  -', [(0,1),(3,4), (15,16)])
-    assert  not t.is_all_decorated() and t.is_all_separator() and not t.has_calculated()
-    t = TableLine('=   ==', [(0,1),(3,5), (15,16)])
-
+    t = TableLine('_One_    *Space Two*', [(0, 7), (9, 20), (30, 35)])
+    assert t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
+    t = TableLine('-  -', [(0, 1), (3, 4), (15, 16)])
+    assert not t.is_all_decorated() and t.is_all_separator() and not t.has_calculated()
+    t = TableLine('=   ==', [(0, 1), (3, 5), (15, 16)])
 
 
 if __name__ == "__main__":
