@@ -35,14 +35,15 @@ def show_page(titles, inps, outs):
     for title, inp, out in zip(titles, inps, outs):
         o += f'''
 <link rel="stylesheet" href="file:///Users/charlesmerriam/p/columns/blue.css" type="text/css">
-<h1>{title}</h1>\n
+        <h1>{title}</h1>\n
+        <h4>Render:</h4>\n
+        {out}\n
         <h3>Input:</h3>\n
         <pre>{inp}</pre><hr>\n
         <h3>Output:</h3>\n
         <h4>Source:</h4>\n
         <code><pre>{out.replace('<', '&lt;')}</pre></code><hr>\n
-        <h4>Render:</h4>\n
-        {out}<hr><hr>\n'''
+        <hr><hr>'''
     f = NamedTemporaryFile(mode='w', suffix='.html', delete=False)
     f.write(o)
     f.close()
@@ -50,10 +51,13 @@ def show_page(titles, inps, outs):
     time.sleep(5)
     os.unlink(f.name)
 
+def test_columns():
+    out = markdown.markdown(sample1, extensions=['columns'])
+    assert '<table' in out
 
 def play_columns():
     texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9]
-    texts = [sample7, sample8, sample9]
+    texts = [sample1, sample7, sample8, sample9]
     outs = []
     titles = []
     for text in texts:
@@ -141,4 +145,5 @@ def play_break():
 
 
 if __name__ == '__main__':
+    test_columns()
     play_columns()

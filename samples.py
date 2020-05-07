@@ -69,16 +69,21 @@ Notice the trend here?
 
 
 
-California   39.5   40
-0123456789   3456   0123
-Texas *X*    29.0   26.2
+California     39.5   40
+0123456789     3456   0123
+Texas *Ya!*   29.0   26.2
 
-Antartica     0.0    -
+Antarctica     0.0    -
 
 
-Not table,    because its two lines break from above.  So it is short.
+This is not part of the table because it is a two line break from above.  
 
-California has a *much* bigger number than Texas both times!
+Notice that:
+* California has a *much* bigger number than Texas both times!
+* No title or footer rows
+* Texas *Ya!* has emphasized text in the table
+* Separator line between Texas and Antarctica
+
 
 """
 sample2 = """
