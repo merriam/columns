@@ -8,24 +8,13 @@ It does a simple job well.
 
 A table has columns of at least two spaces running from top to bottom. A document like this:
 
-```
-Notice the trend here?
-
-California   39.5   40
-Texas        29.0   26.2
-
-
-Calfornia has a bigger number than Texas both times!
-```   
+    California   39.5   40
+    Texas        29.0   26.2
+    
 It renders as:
 
-Notice the trend here?
-
 California   39.5   40
 Texas        29.0   26.2
-
-
-Calfornia has a bigger number than Texas both times!
 
 
 You can add headers and footers using lines of punctuation 

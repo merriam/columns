@@ -7,6 +7,11 @@ from collections import UserList
 from markdown.blockprocessors import BlockProcessor
 from markdown.extensions import Extension
 
+def null(*args, **kwargs):
+    pass
+
+d1_print = null  # python is cute like that.
+d2_print = null
 
 def is_numeric_column_like(string):
     """ true if string is a number, or something belonging in a numeric column """
@@ -271,9 +276,6 @@ class ColumnsBlockProcessor(BlockProcessor):
             cols = new_cols
             good_lines.extend(lines)
             good_blocks += 1
-            # print(f"blocks processed: {good_blocks}; new data fields:")
-            # for l in lines:
-            #     print('|' + '|'.join([l[slice(*c)] for c in new_cols]) + "|")
 
         if len(cols) < 2:
             self.verbose(f'Need at least two columns')
@@ -301,8 +303,8 @@ class ColumnsBlockProcessor(BlockProcessor):
                 else:
                     new_spaces.append(line_spaces[i])
             spaces = new_spaces
-        print('\n'.join(lines))
-        print(''.join(['-' if space else 'A' for space in spaces]))
+        d1_print('\n'.join(lines))
+        d1_print(''.join(['-' if space else 'A' for space in spaces]))
         return spaces
 
     def transform_table(self, parent, blocks):

@@ -1,43 +1,52 @@
+
 table.paleBlueRows {
-  font-family: "Times New Roman", Times, serif;
-  border: 1px solid #FFFFFF;
-  width: 350px;
-  height: 200px;
-  text-align: center;
-  border-collapse: collapse;
+    font-family: "Times New Roman", Times, serif;
+    border: 1px solid #fff;
+    width: 350px;
+    height: 200px;
+    text-align: center;
+    border-collapse: collapse;
 }
-table.paleBlueRows td, table.paleBlueRows th {
-  border: 1px solid #FFFFFF;
-  padding: 3px 2px;
+
+table.paleBlueRows td,
+table.paleBlueRows th {
+    border: 1px solid #fff;
+    padding: 3px 2px;
 }
+
 table.paleBlueRows tbody td {
-  font-size: 13px;
+    font-size: 13px;
 }
+
 table.paleBlueRows tr:nth-child(even) {
-  background: #D0E4F5;
+    background: #d0e4f5;
 }
+
 table.paleBlueRows thead {
-  background: #0B6FA4;
-  border-bottom: 5px solid #FFFFFF;
+    background: #0b6fa4;
+    border-bottom: 5px solid #fff;
 }
+
 table.paleBlueRows thead th {
-  font-size: 17px;
-  font-weight: bold;
-  color: #FFFFFF;
-  text-align: center;
-  border-left: 2px solid #FFFFFF;
+    font-size: 17px;
+    font-weight: bold;
+    color: #fff;
+    text-align: center;
+    border-left: 2px solid #fff;
 }
+
 table.paleBlueRows thead th:first-child {
-  border-left: none;
+    border-left: none;
 }
 
 table.paleBlueRows tfoot {
-  font-size: 14px;
-  font-weight: bold;
-  color: #333333;
-  background: #D0E4F5;
-  border-top: 3px solid #444444;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+    background: #D0E4F5;
+    border-top: 3px solid #444444;
 }
+
 table.paleBlueRows tfoot td {
-  font-size: 14px;
+    font-size: 14px;
 }

@@ -31,10 +31,10 @@ def run_def_list():
 
 
 def show_page(titles, inps, outs):
-    o = ''
+    o = '<html><head><meta charset="UTF-8"></head><body>'
     for title, inp, out in zip(titles, inps, outs):
         o += f'''
-<link rel="stylesheet" href="file:///Users/charlesmerriam/p/columns/blue.css" type="text/css">
+        <link rel="stylesheet" href="file:///Users/charlesmerriam/p/columns/blue.css" type="text/css">
         <h1>{title}</h1>\n
         <h4>Render:</h4>\n
         {out}\n
@@ -48,12 +48,14 @@ def show_page(titles, inps, outs):
     f.write(o)
     f.close()
     webbrowser.open('file://' + f.name)
-    time.sleep(5)
-    os.unlink(f.name)
+    # time.sleep(5)
+    # os.unlink(f.name)
+
 
 def test_columns():
     out = markdown.markdown(sample1, extensions=['columns'])
     assert '<table' in out
+
 
 def play_columns():
     texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9]
@@ -68,6 +70,17 @@ def play_columns():
                                           'columns': {'verbose': True}
                                       }))
     show_page(titles, texts, outs)
+
+
+def play_columns_on_readme():
+    with open('readme.md') as f:
+        inp = f.read()
+    out = markdown.markdown(inp,
+                            extensions=['columns'],
+                            extension_configs={
+                                'columns': {'verbose': True}
+                            })
+    show_page(["README.MD"], [inp], [out])
 
 
 def play_inline_del_short():
@@ -147,3 +160,4 @@ def play_break():
 if __name__ == '__main__':
     test_columns()
     play_columns()
+    play_columns_on_readme()
