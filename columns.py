@@ -50,20 +50,29 @@ class Kinds(IntEnum):
     header = 1
     data = 2
     sep = 3
-    subtotal = 4
     footer = 5
 
 
 class TableLine:
     def __init__(self, text, cols_):
-        self.text = text
+        self.text = text.rstrip()
         self.kind = Kinds.tbd
-        self.col_text = [text[start:end] for (start, end) in cols_]
+        self.col_text = [text[start:end].rstrip() for (start, end) in cols_]
         self.col_used_in_total = [False for _ in cols_]
         self.depth = 0  # how deep in a table is this row.
 
     def __str__(self):
-        return f"TableLine, kind={self.kind}, col_text={'|'.join(self.col_text)}"
+        return f"(tableLine, {str(self.kind)}, col_text={'|'.join(self.col_text)}"
+
+    @staticmethod
+    def copy(orig):
+        t = TableLine('', [])
+        t.text = orig.text
+        t.kind = orig.kind
+        t.col_text = orig.col_text[:]
+        t.col_used_in_total = orig.col_used_in_total[:]
+        t.depth = orig.depth
+        return t
 
     def is_all_decorated(self):
         no_undecorated = all([re.match(r'^\s*(?:([*_]).*\1)?\s*$', col_text) for col_text in self.col_text])
@@ -81,11 +90,14 @@ class Table(UserList):
     """ A table is a collection of TableLines. """
 
     def __init__(self, copy_from=None):
+        super().__init__()
         if copy_from is None:
             self.data = []
         else:
-            self.data = copy_from.data[:]
-        super().__init__()
+            self.data = [TableLine.copy(t) for t in copy_from.data[:]]
+
+    def __str__(self):
+        return f'(table:{len(self)}) {[str(d) for d in self.data]}'
 
     @classmethod
     def create(cls, lines, cols):
@@ -94,24 +106,31 @@ class Table(UserList):
         return t
 
     def set_kinds(self):
+        def check_rows():
+            if len(self.data) < 2:
+                raise ColumnsException('Too few rows')
+
         if self.data[0].is_all_decorated():
             self.data[0].kind = Kinds.header
         elif self.data[1].is_all_separator():
             self.data[0].kind = Kinds.header
             del self.data[1]
+            check_rows()
 
         while not self.data[-1].text:
             del self.data[-1]  # kill trailing blank lines
-        if self.data[-1].is_all_decorated() or self.data[-1].has_calculated():
-            self.data[-1].kind = Kinds.footer
-        elif self.data[-2].is_all_separator():
+            check_rows()
+        if self.data[-2].is_all_separator():
             self.data[-1].kind = Kinds.footer
             del self.data[-2]
+            check_rows()
+        elif self.data[-1].is_all_decorated() or self.data[-1].has_calculated():
+            self.data[-1].kind = Kinds.footer
 
         for row_num, row in enumerate(self.data):
             if row.kind == Kinds.tbd:
                 if row.has_calculated():
-                    row.kind = Kinds.subtotal
+                    raise ColumnsException('Calculated field outside footer')
                 elif row.text:
                     row.kind = Kinds.data
                 else:
@@ -124,14 +143,15 @@ class Table(UserList):
         """
         for col_num, text in enumerate(row.col_text):
             computing_text = [r.col_text[col_num] for r in computing_rows]
-            count = sum([1 for t in computing_text if is_countable(t)])
-            total = sum([as_number(t) for t in computing_text])
-            count_numbers = sum([1 for t in computing_text if is_number(t)])
             if '<#>' in text:
+                count = sum([1 for t in computing_text if is_countable(t)])
                 text = text.replace('<#>', str(count))
             if '<+>' in text:
+                total = sum([as_number(t) for t in computing_text])
                 text = text.replace('<+>', str(total))
             if '<avg>' in text:
+                count_numbers = sum([1 for t in computing_text if is_number(t)])
+                total = sum([as_number(t) for t in computing_text])
                 if count_numbers:
                     text = text.replace('<avg>', str(total / count_numbers))
                 else:
@@ -143,31 +163,23 @@ class Table(UserList):
                 if any(computing_text):
                     raise ColumnsException('<%> column is not empty')
                 ref_col = col_num - 1
-                while ref_col >= 0 and ('%' in row.col_text or not is_number(row.col_text[ref_col])):
+                while ref_col >= 0 and ('%' in row.col_text[ref_col] or not is_number(row.col_text[ref_col])):
                     ref_col -= 1
                 if ref_col < 0:
                     raise ColumnsException('<%> column has no column to reference')
+                ref_total = as_number(row.col_text[ref_col])
                 for compute_row in computing_rows:
                     if is_number(compute_row.col_text[ref_col]):
-                        compute_row.col_text[col_num] = f'{(compute_row.col_text[ref_col] / total):.1%}'
+                        value = as_number(compute_row.col_text[ref_col])
+                        compute_row.col_text[col_num] = f'{(value / ref_total):.1%}'
                 text = '100.0%'
             row.col_text[col_num] = text
 
     def replace_calc_fields(self):
-        for row_number, row in enumerate(self.data):
-            if row.kind == Kinds.subtotal:
-                self.replace_subtotal_calc_fields(row_number)
-
         if self.data[-1].kind == Kinds.footer:
             rows_in_compute = [row for row in self.data
                                if not row.has_calculated and row.kind in (Kinds.subtotal, Kinds.header)]
             self.calc_row(self.data[-1], rows_in_compute)
-
-    def replace_subtotal_calc_fields(self, row_number):
-        # One and only one row below it should have a list.
-        if row_number >= len(self.data):
-            raise ColumnsException('Subtotal on last line.  Remember to emphasize or separate your footer.')
-        pass
 
 
 class ColumnsException(Exception):
@@ -185,10 +197,6 @@ class ColumnsBlockProcessor(BlockProcessor):
         if self.is_verbose:
             msg = f'Columns: {reason}'
             print(msg, file=stderr)
-
-    def fail(self, reason):
-        self.verbose(reason)
-        raise ColumnsException(reason)
 
     def test(self, parent, block):
         # API entry point, just preliminary test to skip some blocks
@@ -305,9 +313,7 @@ class ColumnsBlockProcessor(BlockProcessor):
 
         def style(row_kind, col_num):
             # row emphasis
-            if row_kind == Kinds.subtotal:
-                s = 'font-style: italic;'
-            elif row_kind == Kinds.footer:
+            if row_kind == Kinds.footer:
                 s = 'font-weight: bold;'
             else:
                 s = ''
@@ -335,11 +341,8 @@ class ColumnsBlockProcessor(BlockProcessor):
                     elif row.kind == Kinds.data:
                         t_row = etree.SubElement(t_table, 'tr')
                         tag_ = 'td'
-                    elif row.kind == Kinds.subtotal:
-                        t_row = etree.SubElement(t_table, 'tr', {'style': 'font-style: italic;'})
-                        tag_ = 'td'
                     else:
-                        self.fail(f'Internal error, odd kind: {row.kind} in {row.text}')
+                        raise ColumnsException(f'Internal error, odd kind: {row.kind} in {row.text}')
 
                     for col, text in enumerate(row.col_text):
                         etree.SubElement(t_row, tag_, style(row.kind, col)).text = text
@@ -353,7 +356,9 @@ class ColumnsBlockProcessor(BlockProcessor):
                 table.replace_calc_fields()
                 update_parent_with_table(table)
             return num_blocks
-        except ColumnsException:
+        except ColumnsException as e:
+            self.verbose(str(e))
+
             return 0  # bail on any problem
 
     def run(self, parent, blocks):
@@ -419,7 +424,7 @@ def test_column_block_processor():
     c.verbose("is_verbose")
     cq.verbose("is not verbose")
     with pytest.raises(ColumnsException):
-        c.fail("Failed")
+        raise ColumnsException("Failed")
     assert c.test(None, "Column with two spaces   Between them")
     assert not c.test(None, "a b c d")
 
@@ -439,7 +444,7 @@ def test_column_block_processor():
     assert c.find_table_extent(['     ']) == (0, [], [])
     assert c.find_table_extent(['a  b']) == (0, [], [])
     assert c.find_table_extent(['             a  b\n             a  b']) == (0, [], [])
-    b1 = ['a  b\n1  2', '3  4\n5  6', '\nNot in Table'] # double space
+    b1 = ['a  b\n1  2', '3  4\n5  6', '\nNot in Table']  # double space
     blocks_used, lines_in_table, cols = cq.find_table_extent(b1)
     assert blocks_used == 2 and lines_in_table == ['a  b', '1  2', '', '3  4', '5  6'] and cols == [(0, 1), (3, 4)]
     b1 = ['a  b\n1  2', '3  4\n5  6', '', 'Not in Table']  # triple space
@@ -466,7 +471,38 @@ def test_table_line():
     assert t.is_all_separator()
 
 
+def test_table():
+    t = Table()
+    t = Table(t)
+    t1 = Table.create(['a  b', 'c  d'], [(0, 1), (3, 4)])
+    t2 = Table(t1)
+    assert len(t1) == len(t2)
+    t1.set_kinds()
+    assert t1[0].kind == Kinds.data
+    lines1 = ['_Name_     _Amt_',
+              'Alice       30',
+              'Bob         40',
+              '              ',
+              'Charlie    -10',
+              '--------   ---',
+              '<#>;<avg>   <+>    <%>']
+    #          01234567890123456789
+    cols1 = [(0, 9), (11, 16), (18, 22)]
+    t = Table.create(lines1, cols1)
+    assert ''.join(t[0].col_text) == '_Name__Amt_'
+    assert len(t[0].col_text) == 3
+    t.set_kinds()
+    assert t[0].kind == Kinds.header and t[-1].kind == Kinds.footer
+    assert t[1].kind == Kinds.data
+    assert t[3].kind == Kinds.sep
+    t.calc_row(t[-1], [t[i] for i in (1,2,4)])
+    assert t[-1].col_text[0] == '3;--'
+    assert t[1].col_text[2] == '50.0%'
+    print(t[-1])
+
+
 if __name__ == "__main__":
+    test_table()
     test_utils()
     test_column_block_processor()
     test_table_line()
