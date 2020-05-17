@@ -58,8 +58,8 @@ def test_columns():
 
 
 def play_columns():
-    texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9]
-    texts = [sample1, sample7, sample8, sample9]
+    # texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9]
+    texts = [sample4]
     outs = []
     titles = []
     for text in texts:
@@ -158,6 +158,6 @@ def play_break():
 
 
 if __name__ == '__main__':
-    test_columns()
+    # test_columns()
     play_columns()
-    play_columns_on_readme()
+    # play_columns_on_readme()

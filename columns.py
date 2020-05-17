@@ -10,8 +10,8 @@ from markdown.extensions import Extension
 def null(*args, **kwargs):
     pass
 
-d1_print = null  # python is cute like that.
-d2_print = null
+debug_update_spaces_print = null  # python is cute like that.
+debug_table = print
 
 def is_numeric_column_like(string):
     """ true if string is a number, or something belonging in a numeric column """
@@ -23,7 +23,7 @@ def try_number(string):
     """ return float, correcting for percent signs and cruft, or None if not parsable """
     try:
         is_percent = '%' in string
-        value = float(re.sub('[ ,$_%]', '', string))
+        value = float(re.sub('[* ,$_%]', '', string))
         return value / 100.0 if is_percent else value
     except (ValueError, TypeError):
         return None
@@ -54,8 +54,8 @@ class Kinds(IntEnum):
     tbd = 0
     header = 1
     data = 2
-    sep = 3
-    footer = 5
+    blank_sep = 3
+    footer = 4
 
 
 class TableLine:
@@ -108,6 +108,8 @@ class Table(UserList):
     def create(cls, lines, cols):
         t = cls()
         t.data = [TableLine(line, cols) for line in lines]
+        debug_table(f"cols: {cols}")
+        debug_table("\n".join(str(l) for l in t.data))
         return t
 
     def set_kinds(self):
@@ -115,9 +117,7 @@ class Table(UserList):
             if len(self.data) < 2:
                 raise ColumnsException('Too few rows')
 
-        if self.data[0].is_all_decorated():
-            self.data[0].kind = Kinds.header
-        elif self.data[1].is_all_separator():
+        if self.data[1].is_all_separator():
             self.data[0].kind = Kinds.header
             del self.data[1]
             check_rows()
@@ -129,7 +129,7 @@ class Table(UserList):
             self.data[-1].kind = Kinds.footer
             del self.data[-2]
             check_rows()
-        elif self.data[-1].is_all_decorated() or self.data[-1].has_calculated():
+        elif self.data[-1].has_calculated():
             self.data[-1].kind = Kinds.footer
 
         for row_num, row in enumerate(self.data):
@@ -139,7 +139,7 @@ class Table(UserList):
                 elif row.text:
                     row.kind = Kinds.data
                 else:
-                    row.kind = Kinds.sep  # might be bottom of table, but will delete it soon
+                    row.kind = Kinds.blank_sep  # might be bottom of table, but will delete it soon
 
     @staticmethod
     def calc_row(row, computing_rows):
@@ -168,11 +168,13 @@ class Table(UserList):
                 if any(computing_text):
                     raise ColumnsException('<%> column is not empty')
                 ref_col = col_num - 1
-                while ref_col >= 0 and ('%' in row.col_text[ref_col] or not is_number(row.col_text[ref_col])):
+                while ref_col >= 0 and (
+                        '%' in row.col_text[ref_col]
+                        or not all([is_numeric_column_like(r.col_text[ref_col])for r in computing_rows])):
                     ref_col -= 1
                 if ref_col < 0:
                     raise ColumnsException('<%> column has no column to reference')
-                ref_total = as_number(row.col_text[ref_col])
+                ref_total = sum([as_number(r.col_text[ref_col]) for r in computing_rows])
                 for compute_row in computing_rows:
                     if is_number(compute_row.col_text[ref_col]):
                         value = as_number(compute_row.col_text[ref_col])
@@ -181,9 +183,8 @@ class Table(UserList):
             row.col_text[col_num] = text
 
     def replace_calc_fields(self):
-        if self.data[-1].kind == Kinds.footer:
-            rows_in_compute = [row for row in self.data
-                               if not row.has_calculated and row.kind in (Kinds.subtotal, Kinds.header)]
+        if self.data[-1].kind == Kinds.footer and self.data[-1].has_calculated():
+            rows_in_compute = [row for row in self.data if row.kind == Kinds.data]
             self.calc_row(self.data[-1], rows_in_compute)
 
 
@@ -303,8 +304,8 @@ class ColumnsBlockProcessor(BlockProcessor):
                 else:
                     new_spaces.append(line_spaces[i])
             spaces = new_spaces
-        d1_print('\n'.join(lines))
-        d1_print(''.join(['-' if space else 'A' for space in spaces]))
+        debug_update_spaces_print('\n'.join(lines))
+        debug_update_spaces_print(''.join(['-' if space else 'A' for space in spaces]))
         return spaces
 
     def transform_table(self, parent, blocks):
@@ -330,7 +331,7 @@ class ColumnsBlockProcessor(BlockProcessor):
         def update_parent_with_table(table):
             t_table = etree.SubElement(parent, 'table', {'class': 'paleBlueRows'})
             for row in table:
-                if row.kind == Kinds.sep:
+                if row.kind == Kinds.blank_sep:
                     t_tr = etree.SubElement(t_table, 'tr', {'style': 'border-bottom:1px solid black'})
                     etree.SubElement(t_tr, 'td', {'colspan': "100%"})
                 else:
@@ -496,11 +497,12 @@ def test_table():
     t.set_kinds()
     assert t[0].kind == Kinds.header and t[-1].kind == Kinds.footer
     assert t[1].kind == Kinds.data
-    assert t[3].kind == Kinds.sep
+    assert t[3].kind == Kinds.blank_sep
     t.calc_row(t[-1], [t[i] for i in (1,2,4)])
     assert t[-1].col_text[0] == '3;--'
     assert t[1].col_text[2] == '50.0%'
     print(t[-1])
+
 
 
 if __name__ == "__main__":

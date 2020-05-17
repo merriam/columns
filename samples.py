@@ -1,68 +1,4 @@
-tutorial1 = """
-&!&!this&!&!
-        
-This is __ins__ text
-This is --strike-- or --del-- text
-This is **bold** text
-This is //italics//, versus *old italics* text
-This is *old italics*, **old bold** and ***old confusing*** text
 
-* list
-* list
-   *  four deep
-    * five deep
-
-        """
-deflist1 = """
-    
-This is a [reference][here] thing
-[here]:  https://thing 'this thing'    
-    
-This is a [two line reference][there] thing
-[there]:  https://thing
-    "optional title"
-    
-We should make *DEFLISTS*
-It would be fun.
-This has a plus <+> and avg <avg>
-
-This is the line before
-
-: Here is a *paragraph* starting with a colon
-but doing nothing else interesting.
-
-This paragraph is like the previous one but has
-: the colon line
-in the middle
-
-Word
-:   def 1
-:   def 2
-    : def 3
-
-But should be:
-
-A
-    : is for apple
-B   : is for bear
-    : is for bitch
-
-
-: this is _just_ a paragraph
-
-Apple
-:   An apple
-    A Computer
-    
-See how cool that is?
-That is very cool.
-:   So cool
-
-Yes that is
-: so cool
-
-See
-"""
 sample1 = """
     
 Notice the trend here?
@@ -79,6 +15,7 @@ Antarctica     0.0    -
 This is not part of the table because it is a two line break from above.  
 
 Notice that:
+
 * California has a *much* bigger number than Texas both times!
 * No title or footer rows
 * Texas *Ya!* has emphasized text in the table
@@ -87,7 +24,7 @@ Notice that:
 
 """
 sample2 = """
-I have headers and footers using punctuation
+I have headers and footers using separators 
 
 State            Population
                  ---------------------
@@ -104,12 +41,47 @@ sample3 = """
   Texas          29.0
   _Total_        _68.5 (million)_"""
 sample4 = """
-I am not a table because I'm indented too far.
+I am not a table
+
+I'm not a table because I am indented too far.
 
       *State*        *Population*
       California     39.5
       Texas          29.0
-      _Total_        _68.5 (million)_"""
+      _Total_        _68.5 (million)_
+      
+and I'm not because my fields overlap.
+
+  *State*        *Population*
+  California Republic    39.5
+  Texas          29.0
+  _Total_        _68.5 (million)_
+  
+And I'm not because I didn't skip a space, so fields overlap.
+California     39.5
+Texas          29.0
+_Total_        _68.5 (million)_
+
+And I'm not because I only have one column
+California    
+Texas         
+_Total_
+
+And I'm too short
+
+California     39.5
+
+And I have a total outside the footer:
+
+State       <+>
+California Republic    39.5
+Texas          29.0
+
+
+California Republic    39.5   <%>
+Texas          29.0
+
+"""
 sample5 = """
 I have computed fields in my footer
 
@@ -212,4 +184,70 @@ nesting_good = """
         more text
     </div>
 </div>
+"""
+
+tutorial1 = """
+&!&!this&!&!
+
+This is __ins__ text
+This is --strike-- or --del-- text
+This is **bold** text
+This is //italics//, versus *old italics* text
+This is *old italics*, **old bold** and ***old confusing*** text
+
+* list
+* list
+   *  four deep
+    * five deep
+
+        """
+deflist1 = """
+
+This is a [reference][here] thing
+[here]:  https://thing 'this thing'    
+
+This is a [two line reference][there] thing
+[there]:  https://thing
+    "optional title"
+
+We should make *DEFLISTS*
+It would be fun.
+This has a plus <+> and avg <avg>
+
+This is the line before
+
+: Here is a *paragraph* starting with a colon
+but doing nothing else interesting.
+
+This paragraph is like the previous one but has
+: the colon line
+in the middle
+
+Word
+:   def 1
+:   def 2
+    : def 3
+
+But should be:
+
+A
+    : is for apple
+B   : is for bear
+    : is for bitch
+
+
+: this is _just_ a paragraph
+
+Apple
+:   An apple
+    A Computer
+
+See how cool that is?
+That is very cool.
+:   So cool
+
+Yes that is
+: so cool
+
+See
 """
