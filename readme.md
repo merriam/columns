@@ -18,7 +18,7 @@ Texas        29.0   26.2
 
 
 You can add headers and footers using lines of punctuation 
-(`-`, `=`, `+`, or `#`) or using bold or underline on each column:
+(`-`, `=`, `+`, or `#`):
 
     State          Population
                    ---------------------
@@ -35,23 +35,12 @@ Texas           29.0
                 ++++
 Total           68.5 (million)
 
-
-or
-
-    *State*        *Population*
-    California     39.5
-    Texas          29.0
-    _Total_        _68.5 (million)_
-
-  *State*        *Population*
-  California     39.5
-  Texas          29.0
-  _Total_        _68.5 (million)_
-
 ## Getting fancy
 
 Wouldn't it be nice to keep the totals up to date when putting more states in the table?   
-You can use `<+>`, `<#>`, `<%>` and `<avg>` in the footer lines:
+You can use `<+>`, `<#>`, `<%>` and `<avg>` in the footer line to compute the value when
+the table is rendered.   Also, using one means you can skip the dash line to separate the
+footer.
 
     California        39.5
     Texas             29.0
@@ -107,10 +96,6 @@ For example, this table is just two columns:
     California                     39.5
             Texas                     29.0
                   Rhode Island  1.0
-
-
-                                Total
-                              --
 
 
 California                     39.5
