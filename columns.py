@@ -1,53 +1,81 @@
 import re
+# noinspection PyPep8Naming
 import xml.etree.ElementTree as etree
-from sys import stderr
-import pytest
 from enum import IntEnum
-from collections import UserList
+from sys import stderr
+from typing import List, Tuple
+
+import pytest
 from markdown.blockprocessors import BlockProcessor
 from markdown.extensions import Extension
+
 
 def null(*args, **kwargs):
     pass
 
+
 debug_update_spaces_print = null  # python is cute like that.
-debug_table = print
-
-def is_numeric_column_like(string):
-    """ true if string is a number, or something belonging in a numeric column """
-    other = re.match(r'(?i)^\s*(?:n/?a|-+)?\s*$', string)
-    return bool(is_number(string) or other)
+debug_table = null
 
 
-def try_number(string):
-    """ return float, correcting for percent signs and cruft, or None if not parsable """
-    try:
-        is_percent = '%' in string
-        value = float(re.sub('[* ,$_%]', '', string))
-        return value / 100.0 if is_percent else value
-    except (ValueError, TypeError):
-        return None
+class ColumnsException(Exception):
+    pass
 
 
-def is_number(string):
-    """ true is string is a number, including '$' """
-    return try_number(string) is not None
-
-
-def as_number(string):
-    """ return string as number (including '$'), or 0 if not parsable """
-    value = try_number(string)
-    return value if value is not None else 0
-
-
-def is_countable(string):
-    """ true iff string is countable by <#>.
-        That is, non-ignorable value, skipping blanks, dashes, and n/a values """
-    return not re.match(r'(?i)^\s*(?:n/?a|-+)?\s*$', string)
+def num_str(num):
+    return f'{num:,}'
 
 
 def tag(name):
-    return f'COLTAG:{name.lower()}'  # add stx?
+    return f'COLUMNS_TAG:{name.lower()}'  # add stx?
+
+
+class ListInfo:
+    def __init__(self, indent, is_ordered):
+        self.indent = indent
+        self.is_ordered = is_ordered
+        # usually set later as entire table is needed.
+        self.order_sequence = 0
+        self.depth = 0
+
+
+class Cell:
+    def __init__(self, text):
+        m = re.match(r'(\s*)(?:([-*+])|(?:(\d+)\.))\s+(.*)', text)
+        if m:
+            self.list_ = ListInfo(indent=len(m.group(1)), is_ordered=bool(m.group(3)))
+            self.text = m.group(4).strip()
+        else:
+            self.list_ = None
+            self.text = text.strip()
+
+    def is_numeric_column_like(self):
+        """ true if string is a number, or something belonging in a numeric column """
+        other = re.match(r'(?i)^\s*(?:n/?a|-+)?\s*$', self.text)
+        return bool(self.is_number() or other)
+
+    def _try_number(self):
+        """ return float, correcting for percent signs and cruft, or None if not parsable """
+        try:
+            is_percent = '%' in self.text
+            value = float(re.sub('[* ,$_%]', '', self.text))
+            return value / 100.0 if is_percent else value
+        except (ValueError, TypeError):
+            return None
+
+    def is_number(self):
+        """ true is string is a number, including '$' """
+        return self._try_number() is not None
+
+    def as_number(self):
+        """ return string as number (including '$'), or 0 if not parsable """
+        value = self._try_number()
+        return value if value is not None else 0
+
+    def is_countable(self):
+        """ true iff string is countable by <#>.
+            That is, non-ignorable value, skipping blanks, dashes, and n/a values """
+        return not re.match(r'(?i)^\s*(?:n/?a|-+)?\s*$', self.text)
 
 
 class Kinds(IntEnum):
@@ -58,81 +86,101 @@ class Kinds(IntEnum):
     footer = 4
 
 
-class TableLine:
-    def __init__(self, text, cols_):
+class TableRow:
+    def __init__(self, text, columns: List[Tuple[int, int]]):
         self.text = text.rstrip()
         self.kind = Kinds.tbd
-        self.col_text = [text[start:end].rstrip() for (start, end) in cols_]
-        self.col_used_in_total = [False for _ in cols_]
-        self.depth = 0  # how deep in a table is this row.
+        self.cells = [Cell(text[start:end].rstrip()) for (start, end) in columns]
 
     def __str__(self):
-        return f"(tableLine, {str(self.kind)}, col_text={'|'.join(self.col_text)}"
-
-    @staticmethod
-    def copy(orig):
-        t = TableLine('', [])
-        t.text = orig.text
-        t.kind = orig.kind
-        t.col_text = orig.col_text[:]
-        t.col_used_in_total = orig.col_used_in_total[:]
-        t.depth = orig.depth
-        return t
+        return f"({str(self.kind)}, col_text={'|'.join((c.text for c in self.cells))}"
 
     def is_all_decorated(self):
-        no_undecorated = all([re.match(r'^\s*(?:([*_]).*\1)?\s*$', col_text) for col_text in self.col_text])
+        no_undecorated = all([re.match(r'^\s*(?:([*_]).*\1)?\s*$', c.text) for c in self.cells])
         return self.text.strip() and no_undecorated
 
     def is_all_separator(self):
-        no_non_dash = all([re.match(r'^\s*([#=\-_+]*)\s*$', col_text) for col_text in self.col_text])
+        no_non_dash = all([re.match(r'^\s*([#=\-_+]*)\s*$', c.text) for c in self.cells])
         return self.text.strip() and no_non_dash
 
     def has_calculated(self):
         return bool(re.search(r'<(\+|-|%|#|avg)>', self.text))
 
 
-class Table(UserList):
-    """ A table is a collection of TableLines. """
+class Align(IntEnum):
+    left = 0
+    right = 1
 
-    def __init__(self, copy_from=None):
-        super().__init__()
-        if copy_from is None:
-            self.data = []
-        else:
-            self.data = [TableLine.copy(t) for t in copy_from.data[:]]
+
+class Table:
+    """ A table is a collection of TableLines.  Userlist requires __init__ signature. """
+
+    # Userlist feels like too much 'behind the scenes stuff'.
+    def __init__(self, lines, col_stops):
+        self.rows = [TableRow(line, col_stops) for line in lines]
+        self.set_row_kinds()
+        self.col_alignment = self.find_column_alignments()
+        self.organize_column_lists()
+        self.replace_calc_fields()
+        debug_table(f"cols: {col_stops}")
+        debug_table("\n".join(str(l) for l in self.rows))
 
     def __str__(self):
-        return f'(table:{len(self)}) {[str(d) for d in self.data]}'
+        return f'(table:{len(self.rows)}) {[str(row) for row in self.rows]}'
 
-    @classmethod
-    def create(cls, lines, cols):
-        t = cls()
-        t.data = [TableLine(line, cols) for line in lines]
-        debug_table(f"cols: {cols}")
-        debug_table("\n".join(str(l) for l in t.data))
-        return t
+    def organize_column_lists(self):
+        """ set depth and sequence numbers for all list items """
+        num_cells = len(self.rows[0].cells)
+        for cell_num in range(num_cells):
+            for row_num, row in enumerate(self.rows):
+                cell = row.cells[cell_num]
+                if cell.list_:
+                    for above in range(row_num - 1, -1, -1):
+                        above_cell = self.rows[above].cells[cell_num]
+                        if not above_cell.list_:
+                            # found a top level
+                            cell.list_.depth = 1
+                            cell.list_.order_sequence = 1
+                            break
+                        elif above_cell.list_.indent < cell.list_.indent:
+                            # found a list item parent
+                            cell.list_.depth = above_cell.list_.depth + 1
+                            cell.list_.order_sequence = 1
+                            break
+                        elif above_cell.list_.indent == cell.list_.indent:
+                            # found a peer item, at same depth
+                            cell.list_.depth = above_cell.list_.depth
+                            cell.list_.order_sequence = above_cell.list_.order_sequence + 1
+                            cell.list_.is_ordered = above_cell.list_.is_ordered
+                            break
+                        else:
+                            # found some child of a node further up the table, ignore
+                            pass
 
-    def set_kinds(self):
+        for row_num, row in enumerate(self.rows):
+            pass
+
+    def set_row_kinds(self):
         def check_rows():
-            if len(self.data) < 2:
+            if len(self.rows) < 2:
                 raise ColumnsException('Too few rows')
 
-        if self.data[1].is_all_separator():
-            self.data[0].kind = Kinds.header
-            del self.data[1]
+        if self.rows[1].is_all_separator():
+            self.rows[0].kind = Kinds.header
+            del self.rows[1]
             check_rows()
 
-        while not self.data[-1].text:
-            del self.data[-1]  # kill trailing blank lines
+        while not self.rows[-1].text:
+            del self.rows[-1]  # kill trailing blank lines
             check_rows()
-        if self.data[-2].is_all_separator():
-            self.data[-1].kind = Kinds.footer
-            del self.data[-2]
+        if self.rows[-2].is_all_separator():
+            self.rows[-1].kind = Kinds.footer
+            del self.rows[-2]
             check_rows()
-        elif self.data[-1].has_calculated():
-            self.data[-1].kind = Kinds.footer
+        elif self.rows[-1].has_calculated():
+            self.rows[-1].kind = Kinds.footer
 
-        for row_num, row in enumerate(self.data):
+        for row_num, row in enumerate(self.rows):
             if row.kind == Kinds.tbd:
                 if row.has_calculated():
                     raise ColumnsException('Calculated field outside footer')
@@ -142,60 +190,72 @@ class Table(UserList):
                     row.kind = Kinds.blank_sep  # might be bottom of table, but will delete it soon
 
     @staticmethod
-    def calc_row(row, computing_rows):
+    def calc_row(row: TableRow, computing_rows: List[TableRow]):
         """ Fills in calculated fields in a row given a list of rows to calculate from.
             For example, '<#>' in any field would be replaced with the number of countable items
         """
-        for col_num, text in enumerate(row.col_text):
-            computing_text = [r.col_text[col_num] for r in computing_rows]
-            if '<#>' in text:
-                count = sum([1 for t in computing_text if is_countable(t)])
-                text = text.replace('<#>', str(count))
-            if '<+>' in text:
-                total = sum([as_number(t) for t in computing_text])
-                text = text.replace('<+>', str(total))
-            if '<avg>' in text:
-                count_numbers = sum([1 for t in computing_text if is_number(t)])
-                total = sum([as_number(t) for t in computing_text])
+        for cell_num, cell in enumerate(row.cells):
+            if '<#>' in cell.text:
+                computing_cells = [r.cells[cell_num] for r in computing_rows]
+                count = sum([1 for c in computing_cells if cell.is_countable()])
+                cell.text = cell.text.replace('<#>', num_str(count))
+            if '<+>' in cell.text:
+                computing_cells = [r.cells[cell_num] for r in computing_rows]
+                total = sum([t.as_number() for t in computing_cells])
+                cell.text = cell.text.replace('<+>', num_str(total))
+            if '<avg>' in cell.text:
+                computing_cells = [r.cells[cell_num] for r in computing_rows]
+                count_numbers = sum([1 for c in computing_cells if c.is_number()])
+                total = sum([c.as_number() for c in computing_cells])
                 if count_numbers:
-                    text = text.replace('<avg>', str(total / count_numbers))
+                    cell.text = cell.text.replace('<avg>', num_str(total / count_numbers))
                 else:
-                    text = text.replace('<avg>', '--')
-            if '<%>' in text:
-                # percentages are complicated.
-                # rule is replace the '<%>' with 100.0 and then set each computed column
-                # to the percentage of the next leftmost column
-                if any(computing_text):
-                    raise ColumnsException('<%> column is not empty')
-                ref_col = col_num - 1
-                while ref_col >= 0 and (
-                        '%' in row.col_text[ref_col]
-                        or not all([is_numeric_column_like(r.col_text[ref_col])for r in computing_rows])):
-                    ref_col -= 1
-                if ref_col < 0:
-                    raise ColumnsException('<%> column has no column to reference')
-                ref_total = sum([as_number(r.col_text[ref_col]) for r in computing_rows])
-                for compute_row in computing_rows:
-                    if is_number(compute_row.col_text[ref_col]):
-                        value = as_number(compute_row.col_text[ref_col])
-                        compute_row.col_text[col_num] = f'{(value / ref_total):.1%}'
-                text = '100.0%'
-            row.col_text[col_num] = text
+                    cell.text = cell.text.replace('<avg>', '--')
+            if '<%>' in cell.text:
+                Table.calc_percentage(cell, cell_num, computing_rows)
+
+    @staticmethod
+    def calc_percentage(cell, cell_num, computing_rows):
+        # percentages should replace '<%>' with 100.0, and the blank column above with percentages
+        # of the numbers in the next column to the left (the ref column)
+        above_cells = [r.cells[cell_num] for r in computing_rows]
+        if any((c.text for c in above_cells)):
+            raise ColumnsException('<%> column is not empty')
+        ref_col = cell_num - 1
+        if ref_col < 0:
+            raise ColumnsException('<%> column has no column to the left to reference')
+        ref_cells = [r.cells[ref_col] for r in computing_rows]
+        ref_total = sum([c.as_number() for c in ref_cells])
+        if ref_total == 0:
+            cell.text = cell.text.replace('<%>', '-- %')
+        else:
+            for index, ref in enumerate(ref_cells):
+                if ref.is_number():
+                    above_cells[index].text = f'{(ref.as_number() / ref_total):.1%}'
+            cell.text = cell.text.replace('<%>', '100.0%')
 
     def replace_calc_fields(self):
-        if self.data[-1].kind == Kinds.footer and self.data[-1].has_calculated():
-            rows_in_compute = [row for row in self.data if row.kind == Kinds.data]
-            self.calc_row(self.data[-1], rows_in_compute)
+        if self.rows[-1].kind == Kinds.footer and self.rows[-1].has_calculated():
+            rows_in_compute = [row for row in self.rows if row.kind == Kinds.data]
+            self.calc_row(self.rows[-1], rows_in_compute)
 
-
-class ColumnsException(Exception):
-    pass
+    def find_column_alignments(self):
+        alignments = []
+        num_columns = len(self.rows[0].cells)
+        for c_i in range(num_columns):
+            column_of_numeric_data = [row.cells[c_i].is_numeric_column_like()
+                                      for row in self.rows
+                                      if row.kind == Kinds.data]
+            alignments.append(Align.right if all(column_of_numeric_data) else Align.left)
+        return alignments
 
 
 class ColumnsBlockProcessor(BlockProcessor):
-    def __init__(self, parser, verbose, code_indent):
+    def __init__(self, parser, verbose, style, code_indent):
         self.is_verbose = verbose
         self.code_indent = code_indent
+        self.style = style
+        self.was_style_emitted = False
         super().__init__(parser)
         self.lines = []
 
@@ -287,6 +347,64 @@ class ColumnsBlockProcessor(BlockProcessor):
         else:
             return good_blocks, good_lines, cols
 
+    def emit_style(self, parent):
+        if self.style == 'blue':
+            e = etree.SubElement(parent, 'style')
+            e.text = """
+table.columns {
+    font-family: "Times New Roman", Times, serif;
+    border: 1px solid #fff;
+    text-align: center;
+    border-collapse: collapse;
+}
+
+table.columns td,
+table.columns th {
+    border: 1px solid #000;
+    padding: 2px 1px;
+}
+
+table.columns tbody td {
+    font-size: 13px;
+}
+
+table.columns span ul {
+    margin: 0px;
+}
+
+table.columns tr:nth-child(even) {
+    background: #d0e4f5;
+}
+
+table.columns thead {
+    background: #0b6fa4;
+    border: 5px solid #000;
+}
+
+table.columns thead th {
+    font-size: 17px;
+    font-weight: bold;
+    color: #fff;
+    text-align: center;
+    border: 2px solid #000;
+}
+
+
+table.columns tfoot {
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+    background: #D0E4F5;
+    border-top: 3px solid #444444;
+}
+r
+table.columns tfoot td {
+    font-size: 14px;
+    border: 1px solid #000
+}
+"""
+            print("style emitted")
+
     @staticmethod
     def update_spaces_in_lines(lines, spaces):
         """
@@ -308,56 +426,74 @@ class ColumnsBlockProcessor(BlockProcessor):
         debug_update_spaces_print(''.join(['-' if space else 'A' for space in spaces]))
         return spaces
 
+    @staticmethod
+    def check_list(text):
+        #  return is_list, is_ordered, indent, item
+        m = re.match(r'(\s*)(?:([*-+])|(?:(\d+)\.))\s+(.*)', text)
+        if m:
+            return True, bool(m.group(3)), len(m.group(1)), m.group(4).strip()
+        else:
+            return False, False, 0, ''
+
+    def render_table_into_parent(self, parent, table):
+        def style(row_kind, col_num):
+            s = 'font-weight: bold;' if row_kind == Kinds.footer else ''
+            s += ('text-align: right;' if table.col_aligment[col_num] else 'text-align: left;')
+            return {'style': s} if s else {}
+
+        if self.was_style_emitted == False:
+            self.emit_style(parent)
+            self.was_style_emitted = True
+
+        t_table = etree.SubElement(parent, 'table', {'class': 'columns'})
+        for row_num, row in enumerate(table.rows):
+            if row.kind == Kinds.blank_sep:
+                t_tr = etree.SubElement(t_table, 'tr', {'style': 'border-bottom:1px solid black'})  # And me
+                etree.SubElement(t_tr, 'td', {'colspan': "100%"})
+            else:
+                if row.kind == Kinds.header:
+                    t_row = etree.SubElement(etree.SubElement(t_table, 'thead'), 'tr')
+                    tag_ = 'th'
+                elif row.kind == Kinds.footer:
+                    t_row = etree.SubElement(etree.SubElement(t_table, 'tfoot'), 'tr')
+                    tag_ = 'td'
+                elif row.kind == Kinds.data:
+                    t_row = etree.SubElement(t_table, 'tr')
+                    tag_ = 'td'
+                else:
+                    raise ColumnsException(f'Internal error, odd kind: {row.kind} in {row.text}')
+
+                for c_i, c in enumerate(row.cells):
+                    align = {'align': ('left' if table.col_alignment[c_i] == Align.left else 'right')}
+                    if not c.list_:
+                        # normal headers, footers, and non-list data
+                        etree.SubElement(t_row, tag_, align).text = c.text if c.text else '&nbsp;'
+                    else:
+                        # <td><span class="depth2"><ul><ol><li>foo</li></ol></ul></span></td>
+                        class_ = f'depth{c.list_.depth}'
+                        el = etree.SubElement(t_row, tag_, align)
+                        el = etree.SubElement(el, 'span', {'class': class_})
+                        for _ in range(c.list_.depth - 1):
+                            el = etree.SubElement(el, 'ul')
+                        if c.list_.is_ordered:
+                            el = etree.SubElement(el, 'ol', {'start': str(c.list_.order_sequence)})
+                        else:
+                            el = etree.SubElement(el, 'ul')
+                        el = etree.SubElement(el, 'li')
+                        el.text = c.text if c.text else '&nbsp;'
+
     def transform_table(self, parent, blocks):
         """
         Transform table from blocks, updating parent.  Returns
         number of blocks used, which may be 0 if not a table.
         """
 
-        def style(row_kind, col_num):
-            # row emphasis
-            if row_kind == Kinds.footer:
-                s = 'font-weight: bold;'
-            else:
-                s = ''
-            # col formatting
-            column = [(row.col_text[col_num] if col_num < len(row.col_text) else '')
-                      for row in table]
-            if all([is_numeric_column_like(col) for col in column]):  # numberish
-                s += 'text-align: right;'
-                # line up decimal points?  It's a pain.
-            return {'style': s} if s else {}
-
-        def update_parent_with_table(table):
-            t_table = etree.SubElement(parent, 'table', {'class': 'paleBlueRows'})
-            for row in table:
-                if row.kind == Kinds.blank_sep:
-                    t_tr = etree.SubElement(t_table, 'tr', {'style': 'border-bottom:1px solid black'})
-                    etree.SubElement(t_tr, 'td', {'colspan': "100%"})
-                else:
-                    if row.kind == Kinds.header:
-                        t_row = etree.SubElement(etree.SubElement(t_table, 'thead'), 'tr')
-                        tag_ = 'th'
-                    elif row.kind == Kinds.footer:
-                        t_row = etree.SubElement(etree.SubElement(t_table, 'tfoot'), 'tr')
-                        tag_ = 'td'
-                    elif row.kind == Kinds.data:
-                        t_row = etree.SubElement(t_table, 'tr')
-                        tag_ = 'td'
-                    else:
-                        raise ColumnsException(f'Internal error, odd kind: {row.kind} in {row.text}')
-
-                    for col, text in enumerate(row.col_text):
-                        etree.SubElement(t_row, tag_, style(row.kind, col)).text = text
-
         # transform table
         try:
             (num_blocks, lines, cols) = self.find_table_extent(blocks)
             if num_blocks > 0:
-                table = Table.create(lines, cols)
-                table.set_kinds()
-                table.replace_calc_fields()
-                update_parent_with_table(table)
+                table = Table(lines, cols)
+                self.render_table_into_parent(parent, table)
             return num_blocks
         except ColumnsException as e:
             self.verbose(str(e))
@@ -380,37 +516,43 @@ class ColumnsExtension(Extension):
     def __init__(self, **kwargs):
         self.config = {
             'verbose': [False, 'print extra information to stdout'],
-            'style': ['default', 'style type: default, bare, or stylesheet filename']}
+            'style': ['default', 'style type: default or "blue" table styling']}
         super().__init__(**kwargs)
 
     def extendMarkdown(self, md):
         md.parser.blockprocessors.register(
-            ColumnsBlockProcessor(md.parser, self.getConfig('verbose'), code_indent=md.tab_length),
+            ColumnsBlockProcessor(md.parser,
+                                  verbose=self.getConfig('verbose'),
+                                  style=self.getConfig('style'),
+                                  code_indent=md.tab_length),
             'columns', 125)  # run before code block escapes
 
 
+# noinspection PyPep8Naming
 def makeExtension(**kwargs):
     return ColumnsExtension(**kwargs)
 
 
+# noinspection PyProtectedMember
 def test_utils():
     g1 = ['-$23,123.45', '-23_123.45', '-2312345%']
-    g2 = [' .302  ', '   $ 0,000,000,000.302000  ', '  30.2%   ', '30.2 %']
+    g2 = [' .302  ', '   $ 0,000,000,000.302000  ', '  30.2%   ', '30.2 %', ' *23*']
     g3 = ['  n/a  ', 'NA', '--', '', '   ']
-    g4 = ['  text ', '234 USD', 'about 23.4', '*23*', '(23.4)', '23.4-']
+    g4 = ['  text ', '234 USD', 'about 23.4', '(23.4)', '23.4-']
 
-    assert all([is_numeric_column_like(s) for s in [*g1, *g2, *g3]])
-    assert not any([is_numeric_column_like(s) for s in [*g4]])
-    assert all([is_number(s) for s in [*g1, *g2]])
-    assert not any([is_number(s) for s in [*g3, *g4]])
-    assert all([as_number(s) == -23123.45 for s in g1])
-    assert all([as_number(s) == 0 for s in [*g3, *g4]])
-    assert all([try_number(s) is None for s in [*g3, *g4]])
-    assert all([try_number(s) is not None for s in [*g1, *g2]])
-    assert all([is_countable(s) for s in [*g1, *g2, *g4]])
-    assert not any([is_countable(s) for s in g3])
+    assert all([Cell(s).is_numeric_column_like() for s in [*g1, *g2, *g3]])
+    assert not any([Cell(s).is_numeric_column_like() for s in [*g4]])
+    assert all([Cell(s).is_number() for s in [*g1, *g2]])
+    assert not any([Cell(s).is_number() for s in [*g3, *g4]])
+    assert all([Cell(s).as_number() == -23123.45 for s in g1])
+    assert all([Cell(s).as_number() == 0 for s in [*g3, *g4]])
+    assert all([Cell(s)._try_number() is None for s in [*g3, *g4]])
+    assert all([Cell(s)._try_number() is not None for s in [*g1, *g2]])
+    assert all([Cell(s).is_countable() for s in [*g1, *g2, *g4]])
+    assert not any([Cell(s).is_countable() for s in g3])
 
 
+# noinspection SpellCheckingInspection
 def test_column_block_processor():
     class MockParser:
         class mock1:
@@ -456,33 +598,40 @@ def test_column_block_processor():
 
 
 def test_table_line():
-    t = TableLine('', [])
+    t = TableRow('', [])
     assert not t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('    ', [(0, 1), (3, 4)])
+    t = TableRow('    ', [(0, 1), (3, 4)])
     assert not t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('a  b', [(0, 1), (3, 4)])
-    assert t.text == 'a  b' and t.col_text[0] == 'a' and t.col_text[1] == 'b'
+    t = TableRow('a  b', [(0, 1), (3, 4)])
+    assert t.text == 'a  b' and t.cells[0].text == 'a' and t.cells[1].text == 'b'
     assert not t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('One   Space <#> Two', [(0, 3), (5, 21), (30, 35)])
-    assert t.col_text[0] == 'One' and t.col_text[1] == ' Space <#> Two' and t.col_text[2] == ''
+    t = TableRow('One   Space <#> Two', [(0, 3), (5, 21), (30, 35)])
+    assert t.cells[0].text == 'One' and t.cells[1].text == 'Space <#> Two' and t.cells[2].text == ''
     assert not t.is_all_decorated() and not t.is_all_separator() and t.has_calculated()
-    t = TableLine('_One_    *Space Two*', [(0, 7), (9, 20), (30, 35)])
+    t = TableRow('_One_    *Space Two*', [(0, 7), (9, 20), (30, 35)])
     assert t.is_all_decorated() and not t.is_all_separator() and not t.has_calculated()
-    t = TableLine('-  -', [(0, 1), (3, 4), (15, 16)])
+    t = TableRow('-  -', [(0, 1), (3, 4), (15, 16)])
     assert not t.is_all_decorated() and t.is_all_separator() and not t.has_calculated()
-    t = TableLine('=   ==', [(0, 1), (3, 5), (15, 16)])
+    t = TableRow('=   ==', [(0, 1), (3, 5), (15, 16)])
     assert t.is_all_separator()
 
 
+def test_cell():
+    c = Cell('   foo ')
+    assert c.text == 'foo' and not c.list_
+    c = Cell('  +    bar  ')
+    assert c.text == 'bar' and c.list_ and not c.list_.is_ordered and c.list_.indent == 2
+    c = Cell('12.  baz')
+    assert c.text == 'baz' and c.list_ and c.list_.is_ordered and c.list_.indent == 0
+
+
 def test_table():
-    t = Table()
-    t = Table(t)
-    t1 = Table.create(['a  b', 'c  d'], [(0, 1), (3, 4)])
-    t2 = Table(t1)
-    assert len(t1) == len(t2)
-    t1.set_kinds()
-    assert t1[0].kind == Kinds.data
+    # test creation and parse
+    t1 = Table(['a  b', 'c  d'], [(0, 1), (3, 4)])
+    assert t1.rows[0].kind == Kinds.data
+
     lines1 = ['_Name_     _Amt_',
+              '-----',
               'Alice       30',
               'Bob         40',
               '              ',
@@ -491,22 +640,51 @@ def test_table():
               '<#>;<avg>   <+>    <%>']
     #          01234567890123456789
     cols1 = [(0, 9), (11, 16), (18, 22)]
-    t = Table.create(lines1, cols1)
-    assert ''.join(t[0].col_text) == '_Name__Amt_'
-    assert len(t[0].col_text) == 3
-    t.set_kinds()
-    assert t[0].kind == Kinds.header and t[-1].kind == Kinds.footer
-    assert t[1].kind == Kinds.data
-    assert t[3].kind == Kinds.blank_sep
-    t.calc_row(t[-1], [t[i] for i in (1,2,4)])
-    assert t[-1].col_text[0] == '3;--'
-    assert t[1].col_text[2] == '50.0%'
-    print(t[-1])
+    t = Table(lines1, cols1)
+    assert ''.join((c.text for c in t.rows[0].cells)) == '_Name__Amt_'
+    assert len(t.rows[0].cells) == 3
 
+    assert t.rows[0].kind == Kinds.header and t.rows[-1].kind == Kinds.footer
+    assert t.rows[1].kind == Kinds.data
+    assert t.rows[3].kind == Kinds.blank_sep
+
+    assert t.rows[-1].cells[0].text == '3;--'
+    assert t.rows[1].cells[2].text == '50.0%'
+
+    assert t.col_alignment[0] == Align.left and t.col_alignment[1] == Align.right
+
+
+def test_list_table():
+    lines1 = ['_Name_     _Amt_',
+              '-----',
+              'Alice       30',
+              '* Bob       40',
+              '  * C2       4  ',
+              'Charlie    -10',
+              '  1. D2      3 ',
+              '--------   ---',
+              '<#>;<avg>   <+>    <%>']
+    #          01234567890123456789
+    cols1 = [(0, 9), (11, 16), (18, 22)]
+    t = Table(lines1, cols1)
+    assert not t.rows[2].cells[0].list_.is_ordered
+    assert t.rows[3].cells[0].list_.depth == 2
+    l = t.rows[5].cells[0].list_
+    assert l.is_ordered and l.order_sequence == 1
+
+
+def test_check_list():
+    assert ColumnsBlockProcessor.check_list('  * Foobar') == (True, False, 2, 'Foobar')
+    assert ColumnsBlockProcessor.check_list('  9.    Foobar') == (True, True, 2, 'Foobar')
+    assert ColumnsBlockProcessor.check_list('  Foobar') == (False, False, 0, '')
+    assert ColumnsBlockProcessor.check_list('*Foobar') == (False, False, 0, '')
 
 
 if __name__ == "__main__":
-    test_table()
+    test_cell()
     test_utils()
+    test_table()
+    test_list_table()
     test_column_block_processor()
     test_table_line()
+    test_check_list()

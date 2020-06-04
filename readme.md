@@ -6,25 +6,25 @@ It does a simple job well.
 
 ## What's a table?
 
-A table has columns of at least two spaces running from top to bottom. A document like this:
+A table is text with at least two columns of at least two spaces running from top to bottom. A document like this:
 
     California   39.5   40
     Texas        29.0   26.2
     
-It renders as:
+is a table that renders as:
 
 California   39.5   40
 Texas        29.0   26.2
 
 
 You can add headers and footers using lines of punctuation 
-(`-`, `=`, `+`, or `#`):
+(`-`, `=`, `+`, or `#`) after the first line or before the last line:
 
     State          Population
                    ---------------------
     California     39.5
     Texas          29.0
-                   ++++
+    ++++
     Total          68.5 (million)
 
 
@@ -32,52 +32,61 @@ State           Population
                 ---------------------
 California      39.5
 Texas           29.0
-                ++++
+++++
 Total           68.5 (million)
 
 ## Getting fancy
 
-Wouldn't it be nice to keep the totals up to date when putting more states in the table?   
-You can use `<+>`, `<#>`, `<%>` and `<avg>` in the footer line to compute the value when
-the table is rendered.   Also, using one means you can skip the dash line to separate the
-footer.
+Tables written text have a few fancy bits:  totals, blank lines, and lists.  Totals, counts, percentages, and averages
+can be used in the footer by having `<+>`, `<#>`, `<%>` or `<avg>` respectively.  Skipping a single line makes a 
+blank table line.  You can use lists in columns, just write like you would in markdown.  Finally, note that columns
+are really forgiving about aligning things perfectly.
 
-    California        39.5
-    Texas             29.0
-    _<#> States_      _<+> (average <avg>)_   <%>
+That means we make this table:
 
+**Selected Populations**
 
-California        39.5
-Texas             29.0
-_<#> States_      _<+> (average <avg>)_   <%>
-
-You can add occasional blank lines:
+Country                     Population (Millions)
+-----
+* Asia
+    - China                   1,439
+    - India                   1,379
+    - Indonesia              273
     
-    Washington    12.5
-    Oregon         2.5
-    California    39.5
+* Americas
+    * North America
+        - United States       330
+        - Mexico              129
+    * South America
+        - Brazil              212
+                            <+> (in <#> countries)     <%>
+
+
+comes typing:
+
+    **Selected Populations**
     
-    Texas         29.0
-    Arkansas      13.4
+    Country                 Population (Millions)
+    -----
+    * Asia
+        - China                   1,439
+        - India                   1,379
+        - Indonesia              273
+        
+    * Americas
+        * North America
+            - United States       330
+            - Mexico              129
+        * South America
+            - Brazil              212
+                                <+> (in <#> countries)     <%>
 
-You can use ordered and unordered lists:
+## Getting More Fancy
 
-    California          
-    * Born US Citizen  28883435
-    * Foreign Born     10628788
-    Texas              
-    1.  Born US Citizen  24066581
-    1. Foreign Born     4929300
-    _Total_            _<+> (avg <avg>)_              <%>
-
-California          <+>                <%>
-* Born US Citizen  28883435
-* Foreign Born     10628788
-Texas               <+>                <%>
-* Born US Citizen  24066581
-* Foreign Born     4929300
-_Total_            _<+> (avg <avg>)_              <%>
-
+You might want to get more fancy:  different fonts; ; subtotals.  You can use 
+use an html style tags for some flair.  For more control, just escape to html
+and build your own table. *Columns* is only useful for simple tables, not for making a rendering
+language.
 
 ## Getting Technical
 
@@ -86,24 +95,6 @@ expect.   A table is at least one blank line, optional headers, optional data,
 an optional total line, and, finally, at least two blank lines.  The table
 must be at least rows, including header and footer.  It also needs least two columns.
 
-A columns are made by having multiple spaces running top to bottom.  If 
-the whole table is indented it can become a Markdown code block.  Columns are 
-forgiving about alignment because spaces don't change rendering outside of lists.  
-For example, this table is just two columns:
-
-                                    Total
-                                 --
-    California                     39.5
-            Texas                     29.0
-                  Rhode Island  1.0
-
-
-California                     39.5
-        Texas                     29.0
-              Rhode Island  1.0
-
-
-You can overwrite the default styling by using an html escape to set a \<style> to 
-overwrite styles starting with the class `columns_table`.   Columns make simple tables
-which humans would intuit from the text.  For a fancier table, use a \<table> html-escape 
-instead.
+A column is made by having multiple spaces running top to bottom through the whole block 
+of text.  You can indent the first line, e.g., column headers.  If the whole table is indented,
+though, it can become a Markdown code block.

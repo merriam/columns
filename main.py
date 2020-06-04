@@ -12,7 +12,7 @@ import webbrowser
 from tempfile import NamedTemporaryFile
 
 from samples import tutorial1, deflist1, sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, \
-    sample9, del1, box1, nesting_bad
+    sample9, sample10, del1, box1, nesting_bad
 
 
 def run_tutorial():
@@ -37,7 +37,7 @@ def show_page(titles, inps, outs):
         <link rel="stylesheet" href="file:///Users/charlesmerriam/p/columns/blue.css" type="text/css">
         <h1>{title}</h1>\n
         <h4>Render:</h4>\n
-        {out}\n
+        {out}\n<hr>\n
         <h3>Input:</h3>\n
         <pre>{inp}</pre><hr>\n
         <h3>Output:</h3>\n
@@ -58,8 +58,8 @@ def test_columns():
 
 
 def play_columns():
-    # texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9]
-    texts = [sample4]
+    texts = [sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9, sample10]
+    # texts = [sample10]
     outs = []
     titles = []
     for text in texts:
@@ -67,7 +67,7 @@ def play_columns():
         outs.append(markdown.markdown(text,
                                       extensions=['columns'],
                                       extension_configs={
-                                          'columns': {'verbose': True}
+                                          'columns': {'verbose': True, 'style': 'blue'}
                                       }))
     show_page(titles, texts, outs)
 
@@ -78,7 +78,7 @@ def play_columns_on_readme():
     out = markdown.markdown(inp,
                             extensions=['columns'],
                             extension_configs={
-                                'columns': {'verbose': True}
+                                'columns': {'verbose': False, 'style': 'blue'}
                             })
     show_page(["README.MD"], [inp], [out])
 
@@ -111,7 +111,7 @@ def play_inline_del_long():
     print(markdown.markdown(txt,
                             extensions=[DelExtension()],
                             extension_configs={
-                                'columns': {'verbose': True}
+                                'columns': {'verbose': True},
                             }))
 
 
@@ -160,4 +160,4 @@ def play_break():
 if __name__ == '__main__':
     # test_columns()
     play_columns()
-    # play_columns_on_readme()
+    play_columns_on_readme()

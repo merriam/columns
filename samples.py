@@ -91,22 +91,22 @@ Texas             29.0
 _<#> States_      _<+> (average <avg>)_   <%>
 """
 sample6 = """
-I have blank lines
+I have blank lines and numeric alignment
 
 Washington    12.5
-Oregon         2.5
+  Oregon         2.5
 California    39.5
 
 Texas         29.0
 Arkansas      13.4"""
 sample7 = """
-I have lists, subtotals, and mulitple percentages
+I have lists and commas in my totals
 
-California          <+>                <%>
+California          
 * Born US Citizen  28883435
 * Foreign Born     10628788
-Texas               <+>                <%>
-* Born US Citizen  24066581
+Texas               
+* Born US Citizen  24066582
 * Foreign Born     4929300
 _Total_            _<+> (avg <avg>)_              <%>
 """
@@ -129,6 +129,25 @@ Dash above is  title line separator
 Dash below is  footer line separator
 -
 2 items (<#>)  <+>=0 from no numbers
+"""
+sample10 = """
+Tables have outlines
+
+First Label                             Second Label
+-----------                             -------
+Top level                               9.  ordered
+* Down one                              10. more 
+  * Two                                     and I'm just indented as if I'm part of it.
+* One again                             * Now bullet
+  * Two more                            1.  back to numbers
+    + Three                                 1.  nums in nums
+  2. Two some more                           2.  in nums
+        * Three just indented more      3.  out numbes
+Top Again
+        + One just under indented more
+        
+Notice how outlines are independent.  Once in a list, switching the symbol, or between ordered and unordered, is ignored.
+        
 """
 del1 = """
 First line of the block.
